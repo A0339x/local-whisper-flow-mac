@@ -1292,8 +1292,11 @@ APPLYING them, not writing the words literally.
 do NOT merge separate paragraphs back together.
 
 KEEP EVERY REAL WORD THE SPEAKER SAID. Do NOT delete, shorten, paraphrase, or \
-"tidy up" actual words — including discourse markers like "yeah", "so", "well", \
-"okay", "actually", "like", "you know", "right", "I mean". If in doubt, keep it. \
+"tidy up" actual words — especially leading acknowledgments and discourse markers \
+like "sure", "yeah", "yes", "no", "okay", "alright", "cool", "so", "well", \
+"actually", "like", "you know", "right", "I mean". These are NOT filler — keep \
+them exactly. The ONLY words you may drop are non-lexical fillers (um, uh, er, ah, \
+hmm) and stutters. If in doubt, keep it. \
 Do NOT add information, summarize, translate, or explain. Output ONLY the \
 rewritten text — no preamble, no quotes, no commentary."""
 
@@ -1313,6 +1316,9 @@ FEWSHOT_PAIRS = [
     ),
     # Discourse markers preserved verbatim — only punctuation/casing added.
     ("yeah that's a bit better", "Yeah, that's a bit better."),
+    # Leading acknowledgments are kept, never dropped.
+    ("sure here's the link", "Sure, here's the link."),
+    ("okay no problem i'll send it over", "Okay, no problem, I'll send it over."),
     # Excited / celebratory wording → exclamation marks.
     ("wow this actually works that's incredible", "Wow, this actually works. That's incredible!"),
     ("let's go we finally shipped it", "Let's go! We finally shipped it!"),
