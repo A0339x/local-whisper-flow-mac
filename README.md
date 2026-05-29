@@ -46,6 +46,19 @@ does a quick voice calibration (read a sentence in your normal voice, then an
 excited one) so excitement detection is tuned to you. You can re-run it anytime
 from the menu (**Setup / Onboarding…**).
 
+### Install with Claude Code
+
+If you use [Claude Code](https://claude.com/claude-code), let it do the work.
+Open it on your Mac and say:
+
+> Clone and install https://github.com/A0339x/local-whisper-flow-mac
+
+It will clone the repo, run `./setup.sh --yes` (install `uv` + Ollama, pull the
+model, build the app, add it to /Applications + login) and download the models —
+fully unattended. The **only** thing it can't do is flip the three macOS
+permission switches (Apple requires a human for those); it'll open the right
+panes and tell you exactly what to enable. Apple Silicon Mac required.
+
 ---
 
 ## Two ways to run it

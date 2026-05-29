@@ -6,6 +6,10 @@ cd "$(dirname "$0")"
 PROJECT="$(pwd)"
 echo "── Setting up Voice-To-Text in: $PROJECT"
 
+# --yes / -y → fully unattended (no prompts). Useful when an agent runs this.
+AUTO=0
+for a in "$@"; do case "$a" in --yes|-y) AUTO=1 ;; esac; done
+
 # 1) Apple Silicon required (MLX Whisper is Apple-Silicon only).
 if [ "$(uname -m)" != "arm64" ]; then
   echo "✋ This needs an Apple Silicon Mac (M1/M2/M3/M4/M5). MLX Whisper won't run on Intel."
@@ -54,7 +58,11 @@ echo "── Building the app…"
 ./build_app.sh >/dev/null
 
 # 6) Optional: install to /Applications + start at login
-read -r -p "── Install to /Applications and start at login? [y/N] " yn
+if [ "$AUTO" = "1" ]; then
+  yn="y"
+else
+  read -r -p "── Install to /Applications and start at login? [y/N] " yn
+fi
 if [[ "$yn" =~ ^[Yy] ]]; then
   rm -rf "/Applications/Voice To Text.app"
   cp -R "Voice To Text.app" "/Applications/Voice To Text.app"
