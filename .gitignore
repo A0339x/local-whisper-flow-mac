@@ -1,0 +1,16 @@
+# Python environment (rebuilt per-machine by `uv sync`)
+.venv/
+__pycache__/
+*.pyc
+
+# Built app bundle (rebuilt per-machine by build_app.sh / setup.sh)
+Voice To Text.app/
+
+# Personal / machine-specific runtime data — never commit
+voice-to-text.log
+history.jsonl
+prosody_baseline.json
+.show_settings
+
+# macOS
+.DS_Store

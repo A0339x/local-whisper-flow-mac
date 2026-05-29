@@ -1,0 +1,59 @@
+# ── Voice-To-Text configuration ───────────────────────────────────────────────
+# Edit this file and restart the app to change behavior.
+
+[hotkey]
+# Single key that toggles recording: tap once to start, tap again to stop+paste.
+# Use a pynput key name. Common choices:
+#   "alt_r"  = Right Option    "alt_l" = Left Option
+#   "cmd_r"  = Right Command    "f9"   = F9 function key
+key = "alt_r"
+# Key combo (pynput format) that opens the Settings window. Set "" to disable.
+settings_combo = "<ctrl>+<alt>+<cmd>+m"
+
+[audio]
+# Keep the mic stream open continuously for instant, zero-loss capture.
+warm_mic = true
+# Seconds of audio kept BEFORE you press, so the start is never clipped.
+preroll_seconds = 0.5
+# Input device: "builtin" (Mac mic — recommended), "default", a device index,
+# or a name substring. "builtin" avoids putting Bluetooth headphones into
+# call-quality mode while the mic stays warm.
+input_device = "builtin"
+
+[transcription]
+# Any mlx-community Whisper model on Hugging Face. Downloaded & cached on first use.
+# Full large-v3 = best accuracy (esp. short clips). Use ...-turbo for max speed.
+model = "mlx-community/whisper-large-v3-mlx"
+# Force a language (faster, more accurate) or set "" to auto-detect.
+language = "en"
+
+[tone]
+# Detect vocal excitement from the recording (loudness + pitch variation,
+# adaptive to YOUR normal voice) so the formatter can add exclamation marks
+# even when the words are neutral. Experimental.
+detect_excitement = true
+# How far above your normal loudness/pitch counts as "excited"
+# (1.0 = your average; higher = needs more energy to trigger).
+excitement_sensitivity = 1.35
+# Insert a paragraph break when you pause at least this many seconds mid-speech.
+# Set 0 to disable.
+paragraph_pause_seconds = 1.5
+
+[formatting]
+# Smart formatting & self-correction via a local Ollama model.
+enabled = true
+ollama_url = "http://localhost:11434"
+model = "llama3.1:8b"
+
+[paste]
+# Auto-paste the result into the focused app (simulates Cmd+V).
+auto_paste = true
+# Restore your previous clipboard contents shortly after pasting.
+restore_clipboard = true
+# If you dictate again within this many seconds of the last paste, prepend a
+# space so back-to-back dictations don't run together. Set 0 to disable.
+space_between_seconds = 90
+
+[sounds]
+# Subtle audio cues when recording starts / stops (like Wispr Flow).
+enabled = true

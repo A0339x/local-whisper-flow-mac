@@ -1,0 +1,16 @@
+[project]
+name = "voice-to-text"
+version = "0.1.0"
+description = "Local, free Wispr-Flow-style dictation: Whisper (MLX) + Ollama smart formatting, with a menu bar app and global toggle hotkey."
+requires-python = ">=3.11"
+dependencies = [
+    "rumps>=0.4.0",
+    "sounddevice>=0.4.6",
+    "numpy>=1.26",
+    "mlx-whisper>=0.4.0",
+    "pynput>=1.7.6",
+    "requests>=2.31",
+]
+
+[tool.uv]
+# Use a clean, modern Python managed by uv (your system Python is 3.9).
