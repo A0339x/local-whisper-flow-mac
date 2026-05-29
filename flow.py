@@ -58,6 +58,7 @@ from AppKit import (
     NSTableView,
     NSTableColumn,
     NSFont,
+    NSProgressIndicator,
 )
 from Foundation import NSObject
 from PyObjCTools import AppHelper
@@ -701,7 +702,7 @@ class HistoryController(NSObject):
 # ── Onboarding ───────────────────────────────────────────────────────────────
 
 OB_W, OB_H = 580.0, 480.0
-OB_STEPS = ["welcome", "permissions", "calibrate_normal", "calibrate_excited", "done"]
+OB_STEPS = ["welcome", "permissions", "calibrate_normal", "calibrate_excited", "download", "done"]
 CALIB_SENTENCE = "“The quick brown fox jumps over the lazy dog.”"
 
 
@@ -719,6 +720,9 @@ class OnboardingController(NSObject):
         self._excited_feat = None
         self._status_label = None
         self._next_btn = None
+        self._progress = None
+        self._dl_status = None
+        self._dl_btn = None
         return self
 
     # ── infra ──
@@ -902,6 +906,28 @@ class OnboardingController(NSObject):
             )
 
     @objc.python_method
+    def _step_download(self, cv):
+        self._label(cv, "Download the AI models", NSMakeRect(40, OB_H - 70, OB_W - 80, 30), size=20, bold=True)
+        self._label(
+            cv,
+            "Optional but recommended: fetch the speech model (~3 GB) and the "
+            "formatting model now, so your very first dictation is instant. "
+            "Otherwise they download automatically the first time you use them.",
+            NSMakeRect(40, OB_H - 150, OB_W - 80, 64),
+        )
+        self._dl_btn = self._button(cv, "Download models", NSMakeRect(40, OB_H - 206, 200, 34), "downloadModels:")
+        self._progress = NSProgressIndicator.alloc().initWithFrame_(NSMakeRect(40, OB_H - 246, OB_W - 80, 18))
+        self._progress.setIndeterminate_(False)
+        self._progress.setMinValue_(0.0)
+        self._progress.setMaxValue_(100.0)
+        self._progress.setDoubleValue_(0.0)
+        cv.addSubview_(self._progress)
+        self._dl_status = self._label(
+            cv, "You can also skip this and download later on first use.",
+            NSMakeRect(40, 88, OB_W - 80, 60), secondary=True,
+        )
+
+    @objc.python_method
     def _step_done(self, cv):
         self._label(cv, "You’re all set!  🎤", NSMakeRect(40, OB_H - 80, OB_W - 80, 34), size=22, bold=True)
         sens = self._app.cfg.get("tone", {}).get("excitement_sensitivity", 1.35)
@@ -996,6 +1022,136 @@ class OnboardingController(NSObject):
                 self._app.cfg.setdefault("tone", {})["excitement_sensitivity"] = sens
                 self._app._persist("excitement_sensitivity", sens)
                 log(f"onboarding: tuned excitement_sensitivity={sens}")
+
+    # ── model download (with progress) ──
+    def downloadModels_(self, sender):  # noqa: N802
+        self._dl_btn.setEnabled_(False)
+        self._dl_btn.setTitle_("Downloading…")
+        threading.Thread(target=self._download_worker, daemon=True).start()
+
+    @objc.python_method
+    def _ui(self, fn, *args):
+        AppHelper.callAfter(fn, *args)
+
+    @objc.python_method
+    def _set_status(self, text):
+        if self._dl_status is not None:
+            self._dl_status.setStringValue_(text)
+
+    @objc.python_method
+    def _set_progress(self, pct):
+        if self._progress is not None:
+            self._progress.setDoubleValue_(max(0.0, min(100.0, pct)))
+
+    @objc.python_method
+    def _set_done(self):
+        if self._progress is not None:
+            self._progress.setDoubleValue_(100.0)
+        if self._dl_status is not None:
+            self._dl_status.setStringValue_("✓ Models ready — your first dictation will be instant.")
+        if self._dl_btn is not None:
+            self._dl_btn.setEnabled_(True)
+            self._dl_btn.setTitle_("Re-check / Download")
+
+    @objc.python_method
+    def _download_worker(self):
+        cfg = self._app.cfg
+        # Formatting model (Ollama).
+        try:
+            fmt = cfg.get("formatting", {})
+            if fmt.get("enabled", True):
+                url, model = fmt["ollama_url"], fmt["model"]
+                self._ui(self._set_status, f"Formatting model: {model}…")
+                if not self._ollama_has(url, model):
+                    self._ollama_pull(url, model)
+                self._ui(self._set_progress, 100.0)
+        except Exception as e:
+            log(f"onboarding ollama download error: {e}")
+            self._ui(self._set_status, f"Formatting model issue: {e}")
+        # Speech model (Whisper via Hugging Face).
+        try:
+            repo = cfg["transcription"]["model"]
+            self._ui(self._set_status, f"Speech model: {repo.split('/')[-1]}…")
+            self._ui(self._set_progress, 0.0)
+            self._download_whisper(repo)
+        except Exception as e:
+            log(f"onboarding whisper download error: {e}")
+            self._ui(self._set_status, f"Speech model issue: {e}")
+        self._ui(self._set_done)
+
+    @objc.python_method
+    def _ollama_has(self, url, model):
+        try:
+            r = requests.get(f"{url.rstrip('/')}/api/tags", timeout=5)
+            names = [m.get("name", "") for m in r.json().get("models", [])]
+            return model in names
+        except Exception:
+            return False
+
+    @objc.python_method
+    def _ollama_pull(self, url, model):
+        with requests.post(
+            f"{url.rstrip('/')}/api/pull", json={"name": model}, stream=True, timeout=3600
+        ) as r:
+            for line in r.iter_lines():
+                if not line:
+                    continue
+                try:
+                    d = json.loads(line)
+                except Exception:
+                    continue
+                total, completed = d.get("total"), d.get("completed")
+                if total and completed:
+                    self._ui(self._set_progress, completed * 100.0 / total)
+                if d.get("status"):
+                    self._ui(self._set_status, f"{model}: {d['status']}")
+
+    @objc.python_method
+    def _hf_total_bytes(self, repo):
+        try:
+            r = requests.get(f"https://huggingface.co/api/models/{repo}?blobs=true", timeout=10)
+            return sum((s.get("size") or 0) for s in r.json().get("siblings", []))
+        except Exception:
+            return 0
+
+    @objc.python_method
+    def _dir_size(self, path):
+        total = 0
+        try:
+            for p in path.rglob("*"):
+                if p.is_file():
+                    try:
+                        total += p.stat().st_size
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        return total
+
+    @objc.python_method
+    def _download_whisper(self, repo):
+        cache = Path.home() / ".cache" / "huggingface" / "hub" / ("models--" + repo.replace("/", "--"))
+        total = self._hf_total_bytes(repo)
+        err = {}
+
+        def dl():
+            try:
+                from huggingface_hub import snapshot_download
+
+                snapshot_download(repo)
+            except Exception as e:
+                err["e"] = e
+
+        t = threading.Thread(target=dl, daemon=True)
+        t.start()
+        while t.is_alive():
+            if total:
+                self._ui(self._set_progress, min(99.0, self._dir_size(cache) * 100.0 / total))
+            time.sleep(0.5)
+        t.join()
+        if "e" in err:
+            raise err["e"]
+        self._ui(self._set_progress, 100.0)
 
 
 # ── Transcription (Whisper via MLX) ──────────────────────────────────────────

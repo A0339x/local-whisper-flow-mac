@@ -34,8 +34,16 @@ if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
   (ollama serve >/dev/null 2>&1 &)
   sleep 2
 fi
-echo "── Pulling the formatting model (llama3.1:8b, ~5 GB, one time)…"
-ollama pull llama3.1:8b
+# Pull whatever formatting model is set in config.toml (reuse one you already have
+# by editing [formatting] model). Falls back to llama3.1:8b.
+MODEL=$(awk '/^\[/{s=$0} s=="[formatting]" && /^[[:space:]]*model[[:space:]]*=/{v=$0; sub(/^[^=]*=[[:space:]]*/,"",v); gsub(/"/,"",v); print v; exit}' config.toml)
+MODEL=${MODEL:-llama3.1:8b}
+if ollama list 2>/dev/null | awk '{print $1}' | grep -qx "$MODEL"; then
+  echo "── Formatting model already present: $MODEL"
+else
+  echo "── Pulling the formatting model: $MODEL (one time)…"
+  ollama pull "$MODEL"
+fi
 
 # 4) Python dependencies (creates .venv)
 echo "── Installing Python dependencies…"
