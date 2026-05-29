@@ -62,12 +62,10 @@ space_between_seconds = 90
 enabled = true
 
 [replacements]
-# Deterministically fix words the speech model mis-hears (case-insensitive,
-# whole phrases). Left = what it writes, right = what you meant. Add your own —
-# names, brands, acronyms, jargon.
-"Claude Coe" = "Claude Code"
-"Claude Cowork" = "Claude Code"
-"Claude Co-Work" = "Claude Code"
-"Claude Co Work" = "Claude Code"
-"Claude Cowart" = "Claude Code"
-"Claude Coward" = "Claude Code"
+# OFF by default, so your dictation stays faithful to exactly what you say.
+# Optional: if some distinctive term keeps getting mis-heard, add your own here
+# (case-insensitive, whole phrases). Left = what it writes, right = what you
+# meant. Only use this for words you'd never want the "wrong" way.
+# Examples (uncomment to use):
+#   "Claude Coe" = "Claude Code"
+#   "Anthropics" = "Anthropic"
