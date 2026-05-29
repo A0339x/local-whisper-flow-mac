@@ -1,12 +1,17 @@
+<p align="center">
+  <img src="assets/hero.png" alt="Voice To Text — free, local, on-device Mac dictation" width="100%">
+</p>
+
 # Voice-To-Text — a local, free Wispr-Flow clone
 
 Dictation that runs **entirely on your Mac**. No cloud, no subscription, no data
 leaving your machine.
 
-## 🪄 Easiest install — just ask Claude Code
+## 🪄 Easiest install — just ask Claude
 
 **You don't need to know GitHub or the terminal.** If you have
-[Claude Code](https://claude.com/claude-code) on your Mac, just paste it this one line:
+[**Claude Code**](https://claude.com/claude-code) (the CLI) or **Claude Cowork**
+(Anthropic's agent in the Claude desktop app) on your Mac, just give it this one line:
 
 > **Clone and install https://github.com/A0339x/local-whisper-flow-mac and set it up.**
 
