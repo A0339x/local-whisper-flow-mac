@@ -11,6 +11,7 @@ voice-to-text.log
 history.jsonl
 prosody_baseline.json
 .show_settings
+.onboarded
 
 # macOS
 .DS_Store

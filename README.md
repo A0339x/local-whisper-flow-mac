@@ -38,8 +38,13 @@ cd local-whisper-flow-mac
 ```
 
 `setup.sh` installs `uv` + Ollama, pulls the model, builds the app, and (optionally)
-adds it to `/Applications` + login. Then grant the permissions below and you're
-done. Requires an **Apple Silicon Mac** (M1–M5) and ~8 GB free for the models.
+adds it to `/Applications` + login. Requires an **Apple Silicon Mac** (M1–M5) and
+~8 GB free for the models.
+
+On first launch a short **setup wizard** walks you through the permissions and
+does a quick voice calibration (read a sentence in your normal voice, then an
+excited one) so excitement detection is tuned to you. You can re-run it anytime
+from the menu (**Setup / Onboarding…**).
 
 ---
 

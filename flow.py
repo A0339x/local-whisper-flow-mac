@@ -57,6 +57,7 @@ from AppKit import (
     NSScrollView,
     NSTableView,
     NSTableColumn,
+    NSFont,
 )
 from Foundation import NSObject
 from PyObjCTools import AppHelper
@@ -75,6 +76,7 @@ def load_config() -> dict:
 
 HISTORY_PATH = CONFIG_PATH.parent / "history.jsonl"
 HISTORY_KEEP = 500  # rows kept on disk
+ONBOARDED_PATH = CONFIG_PATH.parent / ".onboarded"
 
 
 def history_append(text: str) -> None:
@@ -696,6 +698,306 @@ class HistoryController(NSObject):
         self._reload()
 
 
+# ── Onboarding ───────────────────────────────────────────────────────────────
+
+OB_W, OB_H = 580.0, 480.0
+OB_STEPS = ["welcome", "permissions", "calibrate_normal", "calibrate_excited", "done"]
+CALIB_SENTENCE = "“The quick brown fox jumps over the lazy dog.”"
+
+
+class OnboardingController(NSObject):
+    """A first-run wizard: explains permissions + warm mic, and calibrates voice."""
+
+    def initWithApp_(self, app):  # noqa: N802
+        self = objc.super(OnboardingController, self).init()
+        if self is None:
+            return None
+        self._app = app
+        self._window = None
+        self._step = 0
+        self._normal_feat = None
+        self._excited_feat = None
+        self._status_label = None
+        self._next_btn = None
+        return self
+
+    # ── infra ──
+    def show(self) -> None:
+        if self._window is None:
+            style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
+            win = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
+                NSMakeRect(0, 0, OB_W, OB_H), style, NSBackingStoreBuffered, False
+            )
+            win.setTitle_("Voice To Text — Setup")
+            win.setReleasedWhenClosed_(False)
+            win.setLevel_(0)
+            self._window = win
+        self._step = 0
+        self._render()
+        NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+        self._window.center()
+        self._window.makeKeyAndOrderFront_(None)
+        self._window.orderFrontRegardless()
+
+    @objc.python_method
+    def _label(self, parent, text, frame, size=13, bold=False, secondary=False):
+        f = NSTextField.alloc().initWithFrame_(frame)
+        f.setStringValue_(text)
+        f.setBezeled_(False)
+        f.setDrawsBackground_(False)
+        f.setEditable_(False)
+        f.setSelectable_(False)
+        f.setUsesSingleLineMode_(False)
+        f.cell().setWraps_(True)
+        f.setFont_(
+            NSFont.boldSystemFontOfSize_(size) if bold else NSFont.systemFontOfSize_(size)
+        )
+        if secondary:
+            f.setTextColor_(NSColor.secondaryLabelColor())
+        parent.addSubview_(f)
+        return f
+
+    @objc.python_method
+    def _button(self, parent, title, frame, action):
+        b = NSButton.alloc().initWithFrame_(frame)
+        b.setTitle_(title)
+        b.setBezelStyle_(1)  # rounded
+        b.setTarget_(self)
+        b.setAction_(action)
+        parent.addSubview_(b)
+        return b
+
+    @objc.python_method
+    def _render(self) -> None:
+        cv = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, OB_W, OB_H))
+        step = OB_STEPS[self._step]
+        getattr(self, f"_step_{step}")(cv)
+
+        # Footer navigation.
+        if self._step > 0:
+            self._button(cv, "Back", NSMakeRect(20, 20, 90, 32), "back:")
+        last = self._step == len(OB_STEPS) - 1
+        self._next_btn = self._button(
+            cv,
+            "Finish" if last else "Next",
+            NSMakeRect(OB_W - 130, 20, 110, 32),
+            "finish:" if last else "next:",
+        )
+        self._label(
+            cv,
+            f"Step {self._step + 1} of {len(OB_STEPS)}",
+            NSMakeRect(OB_W / 2 - 60, 26, 120, 18),
+            size=11,
+            secondary=True,
+        ).setAlignment_(2)  # center
+        self._window.setContentView_(cv)
+
+    # ── navigation ──
+    def next_(self, sender):  # noqa: N802
+        if self._step < len(OB_STEPS) - 1:
+            self._step += 1
+            self._render()
+
+    def back_(self, sender):  # noqa: N802
+        if self._step > 0:
+            self._step -= 1
+            self._render()
+
+    def finish_(self, sender):  # noqa: N802
+        self._apply_calibration()
+        try:
+            ONBOARDED_PATH.write_text("done\n")
+        except Exception:
+            pass
+        self._window.orderOut_(None)
+
+    # ── steps ──
+    @objc.python_method
+    def _step_welcome(self, cv):
+        self._label(cv, "Welcome to Voice To Text", NSMakeRect(40, OB_H - 70, OB_W - 80, 30), size=20, bold=True)
+        body = (
+            "Free, on-device dictation — your voice never leaves this Mac.\n\n"
+            "HOW IT WORKS\n"
+            "•  Tap the Right Option (⌥) key, start talking, then tap it again to "
+            "stop. Your words are cleaned up and pasted wherever your cursor is.\n"
+            "•  A floating waveform pill appears while recording — press ✓ to "
+            "finish or ✕ to cancel.\n"
+            "•  It removes filler words, fixes punctuation, applies “no wait, I "
+            "mean…” corrections, and adds “!” when you sound excited.\n\n"
+            "ABOUT THE “WARM MIC”\n"
+            "To capture instantly with no clipped words, the app keeps your "
+            "built-in Mac microphone active the whole time it runs. That’s why "
+            "you’ll see the orange mic dot in the menu bar — it’s expected and "
+            "normal. Your headphones/AirPods are never used for input, so their "
+            "audio quality stays perfect. You can change the mic or turn this off "
+            "anytime in Settings (click the app icon)."
+        )
+        self._label(cv, body, NSMakeRect(40, 70, OB_W - 80, OB_H - 150))
+
+    @objc.python_method
+    def _step_permissions(self, cv):
+        self._label(cv, "Permissions", NSMakeRect(40, OB_H - 70, OB_W - 80, 30), size=20, bold=True)
+        self._label(
+            cv,
+            "Dictation needs three one-time macOS permissions. Click each button "
+            "to open the right pane, then enable “Python” (or this app):",
+            NSMakeRect(40, OB_H - 130, OB_W - 80, 48),
+        )
+        self._button(cv, "Open Microphone settings", NSMakeRect(40, OB_H - 180, 280, 32), "openMic:")
+        self._label(cv, "Hear your voice.", NSMakeRect(330, OB_H - 176, 220, 22), secondary=True)
+        self._button(cv, "Open Accessibility settings", NSMakeRect(40, OB_H - 222, 280, 32), "openAcc:")
+        self._label(cv, "Paste with ⌘V.", NSMakeRect(330, OB_H - 218, 220, 22), secondary=True)
+        self._button(cv, "Open Input Monitoring settings", NSMakeRect(40, OB_H - 264, 280, 32), "openInput:")
+        self._label(cv, "Detect the Right Option key.", NSMakeRect(330, OB_H - 260, 220, 22), secondary=True)
+        granted = False
+        try:
+            import HIServices
+
+            granted = bool(HIServices.AXIsProcessTrusted())
+        except Exception:
+            pass
+        self._label(
+            cv,
+            ("Accessibility is currently: " + ("✓ granted" if granted else "✗ not yet granted")
+             + ".  After enabling permissions you may need to quit and relaunch the app."),
+            NSMakeRect(40, 70, OB_W - 80, 40),
+            secondary=True,
+        )
+
+    @objc.python_method
+    def _calib_step(self, cv, title, instruction, action):
+        self._label(cv, title, NSMakeRect(40, OB_H - 70, OB_W - 80, 30), size=20, bold=True)
+        self._label(cv, instruction, NSMakeRect(40, OB_H - 140, OB_W - 80, 56))
+        self._label(cv, CALIB_SENTENCE, NSMakeRect(40, OB_H - 196, OB_W - 80, 26), size=15, bold=True)
+        self._button(cv, "● Record (3s)", NSMakeRect(40, OB_H - 250, 180, 34), action)
+        self._status_label = self._label(
+            cv, "Click Record, then read the sentence aloud.",
+            NSMakeRect(40, 80, OB_W - 80, 60), secondary=True,
+        )
+
+    @objc.python_method
+    def _step_calibrate_normal(self, cv):
+        self._calib_step(
+            cv, "Calibrate — your normal voice",
+            "Let’s learn your normal speaking level so we can tell when you’re "
+            "excited. Read this in your NORMAL, relaxed voice:",
+            "recordNormal:",
+        )
+        if self._normal_feat:
+            self._status_label.setStringValue_(
+                f"✓ Captured your normal voice (loudness {self._normal_feat['rms']:.3f})."
+            )
+
+    @objc.python_method
+    def _step_calibrate_excited(self, cv):
+        self._calib_step(
+            cv, "Calibrate — your excited voice",
+            "Now read it again, but sound EXCITED — louder and more energetic, "
+            "like you just got great news:",
+            "recordExcited:",
+        )
+        if self._excited_feat:
+            self._status_label.setStringValue_(
+                f"✓ Captured your excited voice (loudness {self._excited_feat['rms']:.3f})."
+            )
+
+    @objc.python_method
+    def _step_done(self, cv):
+        self._label(cv, "You’re all set!  🎤", NSMakeRect(40, OB_H - 80, OB_W - 80, 34), size=22, bold=True)
+        sens = self._app.cfg.get("tone", {}).get("excitement_sensitivity", 1.35)
+        tuned = ""
+        if self._normal_feat and self._excited_feat:
+            tuned = "We tuned excitement detection to your voice. "
+        body = (
+            "Tap Right Option (⌥) anytime to dictate — talk, then tap again to "
+            "paste.\n\n"
+            f"{tuned}Open Settings (microphone, history, options) by clicking the "
+            "app icon in your Dock.\n\n"
+            "If you haven’t granted the permissions yet, do that now (Back), then "
+            "quit and relaunch the app.\n\n"
+            "Tip: the first dictation downloads the speech model (~3 GB) once — "
+            "give it a minute that first time."
+        )
+        self._label(cv, body, NSMakeRect(40, 80, OB_W - 80, OB_H - 190))
+
+    # ── actions ──
+    def openMic_(self, sender):  # noqa: N802
+        subprocess.Popen(["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"])
+
+    def openAcc_(self, sender):  # noqa: N802
+        subprocess.Popen(["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"])
+
+    def openInput_(self, sender):  # noqa: N802
+        subprocess.Popen(["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent"])
+
+    def recordNormal_(self, sender):  # noqa: N802
+        self._record("normal", sender)
+
+    def recordExcited_(self, sender):  # noqa: N802
+        self._record("excited", sender)
+
+    @objc.python_method
+    def _record(self, which, btn):
+        btn.setEnabled_(False)
+        btn.setTitle_("● Recording… (3s)")
+        if self._status_label:
+            self._status_label.setStringValue_("Listening… read the sentence now.")
+
+        def work():
+            try:
+                dev = resolve_input_device(
+                    self._app.cfg.get("audio", {}).get("input_device", "builtin")
+                )
+                rec = sd.rec(int(3.0 * SAMPLE_RATE), samplerate=SAMPLE_RATE,
+                             channels=1, dtype="float32", device=dev)
+                sd.wait()
+                feat = analyze_prosody(rec.reshape(-1))
+            except Exception as e:
+                feat = None
+                log(f"onboarding capture error: {e}")
+            AppHelper.callAfter(self._record_done, which, btn, feat)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    @objc.python_method
+    def _record_done(self, which, btn, feat):
+        if which == "normal":
+            self._normal_feat = feat
+        else:
+            self._excited_feat = feat
+        btn.setEnabled_(True)
+        btn.setTitle_("Re-record (3s)")
+        if self._status_label:
+            if feat:
+                self._status_label.setStringValue_(
+                    f"✓ Captured (loudness {feat['rms']:.3f}, pitch variation "
+                    f"{feat['f0_std']:.1f}). Click Next, or Re-record."
+                )
+            else:
+                self._status_label.setStringValue_(
+                    "Couldn’t capture — check Microphone permission and try again."
+                )
+
+    @objc.python_method
+    def _apply_calibration(self):
+        n, e = self._normal_feat, self._excited_feat
+        if n:
+            self._app._tone_baseline = {"rms": n["rms"], "f0_std": n["f0_std"], "count": 5}
+            self._app._save_tone_baseline()
+            log(f"onboarding: baseline set rms={n['rms']:.3f} f0std={n['f0_std']:.2f}")
+        if n and e:
+            ratios = []
+            if n["rms"] > 0:
+                ratios.append(e["rms"] / n["rms"])
+            if n["f0_std"] > 0:
+                ratios.append(e["f0_std"] / n["f0_std"])
+            if ratios:
+                sens = round(max(1.2, min(2.2, 1 + 0.45 * (max(ratios) - 1))), 2)
+                self._app.cfg.setdefault("tone", {})["excitement_sensitivity"] = sens
+                self._app._persist("excitement_sensitivity", sens)
+                log(f"onboarding: tuned excitement_sensitivity={sens}")
+
+
 # ── Transcription (Whisper via MLX) ──────────────────────────────────────────
 
 def transcribe(audio: np.ndarray, model: str, language: str) -> dict:
@@ -970,6 +1272,7 @@ class FlowApp(rumps.App):
         self.mic_menu = rumps.MenuItem("Microphone")
         self.settings = SettingsController.alloc().initWithApp_(self)
         self.history = HistoryController.alloc().initWithApp_(self)
+        self.onboarding = OnboardingController.alloc().initWithApp_(self)
 
         self.menu = [
             self.status_item,
@@ -977,6 +1280,7 @@ class FlowApp(rumps.App):
             rumps.MenuItem("Toggle dictation", callback=lambda _: self.toggle()),
             rumps.MenuItem("Settings…", callback=self.open_settings),
             rumps.MenuItem("Dictation History…", callback=self.open_history),
+            rumps.MenuItem("Setup / Onboarding…", callback=self.open_onboarding),
             self.mic_menu,
             self.fmt_item,
             None,
@@ -1001,6 +1305,13 @@ class FlowApp(rumps.App):
         self._settings_watch.start()
 
         self._start_hotkey_listener()
+
+        # First run → show the onboarding wizard once the app loop is up.
+        if not ONBOARDED_PATH.exists():
+            AppHelper.callAfter(self.onboarding.show)
+
+    def open_onboarding(self, _=None) -> None:
+        AppHelper.callAfter(self.onboarding.show)
 
     def _check_settings_trigger(self, _timer) -> None:  # noqa: ANN001
         try:
