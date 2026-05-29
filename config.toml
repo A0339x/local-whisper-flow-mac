@@ -60,3 +60,14 @@ space_between_seconds = 90
 [sounds]
 # Subtle audio cues when recording starts / stops (like Wispr Flow).
 enabled = true
+
+[replacements]
+# Deterministically fix words the speech model mis-hears (case-insensitive,
+# whole phrases). Left = what it writes, right = what you meant. Add your own —
+# names, brands, acronyms, jargon.
+"Claude Coe" = "Claude Code"
+"Claude Cowork" = "Claude Code"
+"Claude Co-Work" = "Claude Code"
+"Claude Co Work" = "Claude Code"
+"Claude Cowart" = "Claude Code"
+"Claude Coward" = "Claude Code"

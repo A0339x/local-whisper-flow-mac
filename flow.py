@@ -1190,6 +1190,20 @@ def transcript_with_paragraphs(result: dict, pause_seconds: float) -> str:
     return "".join(parts).strip()
 
 
+def apply_replacements(text: str, mapping: dict) -> str:
+    """Deterministically fix mis-heard terms (case-insensitive, whole phrases).
+
+    More-specific keys are applied first so a short key can't partially clobber
+    a longer one.
+    """
+    if not text or not mapping:
+        return text
+    for wrong in sorted(mapping, key=len, reverse=True):
+        right = mapping[wrong]
+        text = re.sub(rf"\b{re.escape(wrong)}\b", right, text, flags=re.IGNORECASE)
+    return text
+
+
 # ── Voice-tone (prosody) analysis ────────────────────────────────────────────
 
 TONE_BASELINE_PATH = CONFIG_PATH.parent / "prosody_baseline.json"
@@ -1745,6 +1759,7 @@ class FlowApp(rumps.App):
             text = transcript_with_paragraphs(
                 result, tone_cfg.get("paragraph_pause_seconds", 0)
             )
+            text = apply_replacements(text, self.cfg.get("replacements", {}))
             log(f"  transcript: {text!r}")
             if not text:
                 self.set_state(IDLE, "Heard nothing")
