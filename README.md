@@ -3,6 +3,22 @@
 Dictation that runs **entirely on your Mac**. No cloud, no subscription, no data
 leaving your machine.
 
+## 🪄 Easiest install — just ask Claude Code
+
+**You don't need to know GitHub or the terminal.** If you have
+[Claude Code](https://claude.com/claude-code) on your Mac, just paste it this one line:
+
+> **Clone and install https://github.com/A0339x/local-whisper-flow-mac and set it up.**
+
+Claude does everything for you — installs the tools, downloads the models, builds
+the app, and sets it to start at login. At the very end it'll show you **three
+permission switches to flip** in System Settings (the only step a human has to do —
+Apple won't let software toggle those). Then tap **Right Option** and start talking.
+
+*Requires an Apple Silicon Mac (M1–M5). Prefer to do it yourself? See [Quick install](#quick-install-apple-silicon-mac) below.*
+
+---
+
 - 🎙️ **Speech-to-text** — OpenAI **Whisper large-v3**, running via Apple's
   **MLX** framework (fast on Apple Silicon — transcribes well under real time).
 - 🧠 **Smart formatting** — a local **Ollama** model (`llama3.1:8b`) cleans up the
@@ -44,20 +60,7 @@ adds it to `/Applications` + login. Requires an **Apple Silicon Mac** (M1–M5) 
 On first launch a short **setup wizard** walks you through the permissions and
 does a quick voice calibration (read a sentence in your normal voice, then an
 excited one) so excitement detection is tuned to you. You can re-run it anytime
-from the menu (**Setup / Onboarding…**).
-
-### Install with Claude Code
-
-If you use [Claude Code](https://claude.com/claude-code), let it do the work.
-Open it on your Mac and say:
-
-> Clone and install https://github.com/A0339x/local-whisper-flow-mac
-
-It will clone the repo, run `./setup.sh --yes` (install `uv` + Ollama, pull the
-model, build the app, add it to /Applications + login) and download the models —
-fully unattended. The **only** thing it can't do is flip the three macOS
-permission switches (Apple requires a human for those); it'll open the right
-panes and tell you exactly what to enable. Apple Silicon Mac required.
+from the menu (**Setup / Onboarding…**). (See the [ask-Claude install](#-easiest-install--just-ask-claude-code) at the top for the no-terminal path.)
 
 ---
 
