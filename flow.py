@@ -1156,15 +1156,18 @@ class OnboardingController(NSObject):
 
 # ── Transcription (Whisper via MLX) ──────────────────────────────────────────
 
-def transcribe(audio: np.ndarray, model: str, language: str) -> dict:
+def transcribe(audio: np.ndarray, model: str, language: str, vocabulary: str = "") -> dict:
     import mlx_whisper
 
     if audio.size == 0:
         return {"text": "", "segments": []}
-    decode_opts: dict = {}
+    opts: dict = {}
     if language:
-        decode_opts["language"] = language
-    return mlx_whisper.transcribe(audio, path_or_hf_repo=model, **decode_opts)
+        opts["language"] = language
+    if vocabulary:
+        # Primes the decoder toward these spellings (names, jargon, acronyms).
+        opts["initial_prompt"] = f"Glossary: {vocabulary}."
+    return mlx_whisper.transcribe(audio, path_or_hf_repo=model, **opts)
 
 
 def transcript_with_paragraphs(result: dict, pause_seconds: float) -> str:
@@ -1736,6 +1739,7 @@ class FlowApp(rumps.App):
                 audio,
                 self.cfg["transcription"]["model"],
                 self.cfg["transcription"]["language"],
+                self.cfg["transcription"].get("vocabulary", ""),
             )
             tone_cfg = self.cfg.get("tone", {})
             text = transcript_with_paragraphs(

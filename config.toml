@@ -26,6 +26,9 @@ input_device = "builtin"
 model = "mlx-community/whisper-large-v3-mlx"
 # Force a language (faster, more accurate) or set "" to auto-detect.
 language = "en"
+# Bias recognition toward names/jargon it might otherwise mis-hear (brand names,
+# acronyms, people's names…). Add your own, comma-separated. Set "" to disable.
+vocabulary = "Claude Code, Anthropic, Ollama, Whisper, MLX, Wispr Flow, GitHub, macOS"
 
 [tone]
 # Detect vocal excitement from the recording (loudness + pitch variation,
