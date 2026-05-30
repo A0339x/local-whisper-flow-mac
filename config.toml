@@ -81,12 +81,19 @@ command_model = "qwen2.5:32b"
 # To enable OpenAI:
 #   1. command_base_url = "https://api.openai.com/v1"
 #   2. command_model    = "gpt-4o-mini"   (fast + ~$0.0002/draft; or "gpt-4o")
-#   3. export OPENAI_API_KEY="sk-…" in your shell (the key is read from the env,
-#      never stored here). Restart the app.
+#   3. Put your key where the app can read it. The app launches as a Login Item
+#      and does NOT see your shell's env, so the easiest path is a key FILE:
+#        mkdir -p ~/.config/voice-to-text
+#        printf 'sk-YOURKEY' > ~/.config/voice-to-text/openai_key
+#        chmod 600 ~/.config/voice-to-text/openai_key
+#      then set command_api_key_file below. (Advanced: `launchctl setenv
+#      OPENAI_API_KEY sk-…` makes the env var visible to GUI apps instead.)
+#   4. Restart the app.
 # Leave command_base_url = "" to stay fully local (default). Works with any
 # OpenAI-compatible endpoint (OpenAI, OpenRouter, a local server, …).
 command_base_url = ""
 command_api_key_env = "OPENAI_API_KEY"
+command_api_key_file = "~/.config/voice-to-text/openai_key"
 
 [paste]
 # Auto-paste the result into the focused app (simulates Cmd+V).

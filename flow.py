@@ -1645,24 +1645,40 @@ unless the instruction says to change it. If the instruction is a transformation
 list…), do exactly that. If it's unclear, make the smallest reasonable edit."""
 
 
+def _resolve_api_key(api_key_env: str, api_key_file: str) -> str:
+    """Find the API key: env var first, then a key file. A file is the reliable
+    path for a Login Item / GUI app, which does NOT inherit the shell env."""
+    key = os.environ.get(api_key_env or "", "").strip()
+    if key:
+        return key
+    path = (api_key_file or "").strip()
+    if path:
+        try:
+            return Path(path).expanduser().read_text().strip()
+        except Exception:
+            return ""
+    return ""
+
+
 def chat_complete(messages: list, url: str, model: str, temperature: float,
-                  base_url: str = "", api_key_env: str = "OPENAI_API_KEY") -> str:
+                  base_url: str = "", api_key_env: str = "OPENAI_API_KEY",
+                  api_key_file: str = "") -> str:
     """Run a chat completion and return the assistant text.
 
     Two backends, chosen by `base_url`:
       • "" (default) → local Ollama at `url` (/api/chat, keeps the model warm).
       • set          → any OpenAI-compatible endpoint (/chat/completions) with a
-        Bearer key read from the `api_key_env` environment variable. Lets
-        Command/Write mode offload to OpenAI so the heavy local model never
+        Bearer key from `api_key_env` (env var) or `api_key_file` (a file path).
+        Lets Command/Write mode offload to OpenAI so the heavy local model never
         loads (frees RAM), while dictation stays fully local.
     """
     base = (base_url or "").strip()
     if base:
-        key = os.environ.get(api_key_env, "").strip()
+        key = _resolve_api_key(api_key_env, api_key_file)
         if not key:
             raise RuntimeError(
-                f"Cloud Write mode is on (command_base_url set) but ${api_key_env} "
-                f"is empty. Export your API key or clear command_base_url.")
+                f"Cloud Write mode is on (command_base_url set) but no key found "
+                f"in ${api_key_env} or command_api_key_file. Add your API key.")
         resp = requests.post(
             f"{base.rstrip('/')}/chat/completions",
             headers={"Authorization": f"Bearer {key}"},
@@ -1682,7 +1698,8 @@ def chat_complete(messages: list, url: str, model: str, temperature: float,
 
 
 def apply_command(instruction: str, selected: str, url: str, model: str,
-                  base_url: str = "", api_key_env: str = "OPENAI_API_KEY") -> str:
+                  base_url: str = "", api_key_env: str = "OPENAI_API_KEY",
+                  api_key_file: str = "") -> str:
     """Apply a spoken instruction to selected text (Command Mode)."""
     if not (selected and selected.strip()):
         return selected
@@ -1690,7 +1707,7 @@ def apply_command(instruction: str, selected: str, url: str, model: str,
         {"role": "system", "content": COMMAND_SYSTEM},
         {"role": "user", "content": f"Instruction: {instruction}\n\nSelected text:\n{selected}"},
     ]
-    out = chat_complete(messages, url, model, 0.3, base_url, api_key_env)
+    out = chat_complete(messages, url, model, 0.3, base_url, api_key_env, api_key_file)
     if len(out) >= 2 and out[0] == out[-1] and out[0] in "\"'":
         out = out[1:-1].strip()
     return out or selected
@@ -1849,7 +1866,7 @@ def _clean_draft(text: str) -> str:
 
 def generate_text(instruction: str, url: str, model: str, style: str = "",
                   email: bool = False, base_url: str = "",
-                  api_key_env: str = "OPENAI_API_KEY") -> str:
+                  api_key_env: str = "OPENAI_API_KEY", api_key_file: str = "") -> str:
     """Draft fresh content from a spoken instruction (Command Mode, no selection).
 
     When `email` is False (a chat/message/note, not an email client), the draft
@@ -1869,7 +1886,7 @@ def generate_text(instruction: str, url: str, model: str, style: str = "",
         {"role": "system", "content": sys},
         {"role": "user", "content": f"Write this for me: {instruction}"},
     ]
-    out = chat_complete(messages, url, model, 0.5, base_url, api_key_env)
+    out = chat_complete(messages, url, model, 0.5, base_url, api_key_env, api_key_file)
     if len(out) >= 2 and out[0] == out[-1] and out[0] in "\"'":
         out = out[1:-1].strip()
     out = _clean_draft(out)
@@ -2650,6 +2667,7 @@ class FlowApp(rumps.App):
             cmd_model = fcfg.get("command_model") or fcfg["model"]
             base_url = fcfg.get("command_base_url", "")
             key_env = fcfg.get("command_api_key_env", "OPENAI_API_KEY")
+            key_file = fcfg.get("command_api_key_file", "")
             where = "cloud" if (base_url or "").strip() else "local"
             if generating:
                 self.status_item.title = "Writing…"
@@ -2657,12 +2675,13 @@ class FlowApp(rumps.App):
                 style = style_for_app(self.cfg.get("styles", {}), *app_ctx)
                 email = is_email_context(*app_ctx)
                 result = generate_text(instruction, fcfg["ollama_url"], cmd_model,
-                                       style, email=email, base_url=base_url, api_key_env=key_env)
+                                       style, email=email, base_url=base_url,
+                                       api_key_env=key_env, api_key_file=key_file)
                 log(f"  drafted ({cmd_model} {where}, email={email}) → {result!r}")
             else:
                 self.status_item.title = "Editing…"
                 result = apply_command(instruction, self._command_selection,
-                                       fcfg["ollama_url"], cmd_model, base_url, key_env)
+                                       fcfg["ollama_url"], cmd_model, base_url, key_env, key_file)
                 log(f"  edited ({cmd_model} {where}) → {result!r}")
             if not result:
                 self.set_state(IDLE, "Nothing to write" if generating else "No change")
