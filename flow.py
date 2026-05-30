@@ -1156,6 +1156,30 @@ class OnboardingController(NSObject):
 
 # ── Transcription (Whisper via MLX) ──────────────────────────────────────────
 
+def contains_speech(audio: np.ndarray, sr: int = SAMPLE_RATE) -> bool:
+    """True if the clip has real speech (not silence/room-tone), so we can skip
+    Whisper on empty recordings — it hallucinates ("Thanks for watching!") on
+    silence. Uses an absolute peak floor + mic-gain-independent dynamic range."""
+    if audio is None or audio.size < int(0.15 * sr):
+        return False
+    peak = float(np.max(np.abs(audio)))
+    if peak < 0.04:  # essentially silent
+        return False
+    frame, hop = int(0.025 * sr), int(0.010 * sr)
+    e = np.array(
+        [float(np.sqrt(np.mean(audio[i : i + frame] ** 2) + 1e-12))
+         for i in range(0, audio.size - frame, hop)]
+    )
+    if e.size < 5:
+        return False
+    floor = float(np.percentile(e, 20))
+    loud = float(np.percentile(e, 95))
+    dynamic = loud / (floor + 1e-6)
+    # Speech: loud parts well above the quiet floor, with enough loud frames.
+    loud_frac = float(np.mean(e > max(0.02, floor * 3)))
+    return dynamic >= 4.0 and loud_frac >= 0.03
+
+
 def transcribe(audio: np.ndarray, model: str, language: str, vocabulary: str = "") -> dict:
     import mlx_whisper
 
@@ -1783,6 +1807,13 @@ class FlowApp(rumps.App):
 
     def _process(self, audio: np.ndarray) -> None:
         try:
+            # Skip empty recordings — Whisper hallucinates ("Thanks for
+            # watching!") on silence/room-tone if you press the key and say
+            # nothing.
+            if not contains_speech(audio):
+                log("  (no speech detected — nothing pasted)")
+                self.set_state(IDLE, "Heard nothing")
+                return
             result = transcribe(
                 audio,
                 self.cfg["transcription"]["model"],

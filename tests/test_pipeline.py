@@ -205,6 +205,19 @@ except Exception:
     ok("ollama-down raises (so app can fall back)", True)
 ok("vocabulary param accepted", "text" in flow.transcribe(say_arr("quick check"), WHISPER, "en", "Foo, Bar"))
 
+# ── 8. SILENCE GATE  (prevent Whisper hallucinating on empty recordings) ─────
+print("\n" + "=" * 72)
+print("8. SILENCE GATE  (say nothing → paste nothing)")
+print("=" * 72)
+_rng = np.random.default_rng(0)
+_sr = flow.SAMPLE_RATE
+ok("pure silence rejected", not flow.contains_speech(np.zeros(int(2 * _sr), dtype="float32")))
+ok("quiet ambient rejected", not flow.contains_speech((_rng.standard_normal(int(2 * _sr)) * 0.0008).astype("float32")))
+ok("room-tone rejected", not flow.contains_speech((_rng.standard_normal(int(2 * _sr)) * 0.003).astype("float32")))
+ok("hiss rejected", not flow.contains_speech((_rng.standard_normal(int(2 * _sr)) * 0.01).astype("float32")))
+ok("real speech accepted", flow.contains_speech(say_arr("this is real speech for the gate")))
+ok("short 'okay' accepted", flow.contains_speech(say_arr("okay")))
+
 # ── SUMMARY ──────────────────────────────────────────────────────────────────
 print("\n" + "=" * 72)
 print(f"RESULTS:  {len(PASS)} passed, {len(FAIL)} failed")
