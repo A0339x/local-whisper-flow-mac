@@ -2557,26 +2557,21 @@ class FlowApp(rumps.App):
             if not has_lexical_content(instruction) or is_hallucination(instruction, strict=True):
                 self.set_state(IDLE, "Heard nothing")
                 return
+            # Command/Write mode uses a stronger model than dictation formatting
+            # if one is configured — harder task, less latency-sensitive.
+            fcfg = self.cfg["formatting"]
+            cmd_model = fcfg.get("command_model") or fcfg["model"]
             if generating:
                 self.status_item.title = "Writing…"
                 style = style_for_app(
                     self.cfg.get("styles", {}), *getattr(self, "_command_app", ("", "", "")))
-                result = generate_text(
-                    instruction,
-                    self.cfg["formatting"]["ollama_url"],
-                    self.cfg["formatting"]["model"],
-                    style,
-                )
-                log(f"  drafted → {result!r}")
+                result = generate_text(instruction, fcfg["ollama_url"], cmd_model, style)
+                log(f"  drafted ({cmd_model}) → {result!r}")
             else:
                 self.status_item.title = "Editing…"
                 result = apply_command(
-                    instruction,
-                    self._command_selection,
-                    self.cfg["formatting"]["ollama_url"],
-                    self.cfg["formatting"]["model"],
-                )
-                log(f"  edited → {result!r}")
+                    instruction, self._command_selection, fcfg["ollama_url"], cmd_model)
+                log(f"  edited ({cmd_model}) → {result!r}")
             if not result:
                 self.set_state(IDLE, "Nothing to write" if generating else "No change")
                 return

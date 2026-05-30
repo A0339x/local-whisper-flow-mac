@@ -65,7 +65,16 @@ paragraph_pause_seconds = 1.5
 # Smart formatting & self-correction via a local Ollama model.
 enabled = true
 ollama_url = "http://localhost:11434"
+# Model for cleaning up every dictation (punctuation, filler, self-corrections).
+# This runs on the critical path, so keep it small and fast. llama3.1:8b is a
+# good balance.
 model = "llama3.1:8b"
+# Model for Command/Write mode (editing selected text, drafting emails/messages).
+# This is harder, less latency-sensitive work, so a larger model gives much
+# better instruction-following (fewer placeholders, no meta-commentary). Set to
+# "" to reuse `model` above. qwen2.5:32b is a strong local choice if you have the
+# RAM; it loads on first use (~10s) then stays warm.
+command_model = "qwen2.5:32b"
 
 [paste]
 # Auto-paste the result into the focused app (simulates Cmd+V).
