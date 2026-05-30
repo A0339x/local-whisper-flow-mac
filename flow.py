@@ -1692,21 +1692,69 @@ _PLACEHOLDER_RE = re.compile(r"[\[\<]\s*[^\[\]\<\>\n]{0,40}?\s*[\]\>]")
 # Lines where the model talks ABOUT the task instead of writing the message.
 # High-precision: real emails/messages don't reference "the instruction" or
 # explain which sign-off/greeting was or wasn't included.
+# Explicit sign-off phrases the model sometimes NAMES while explaining (rather
+# than using) them — "Best regards is not needed here". Kept to phrases that are
+# almost never plain body nouns (unlike bare "signature"/"greeting"/"closing",
+# as in "email signature", "greeting card", "closing date").
+_SIGNOFF_PHRASES = (r"sign[- ]?off|best regards|kind regards|warm regards|"
+                    r"best wishes|valediction|salutation|yours truly|yours sincerely")
+# Meta explanations tightly bound to a closing — phrasings a real message body
+# almost never uses ("is not needed", "is implied", "not written").
+_META_EXPLAIN = (r"not needed|not required|isn'?t needed|is omitted|are omitted|"
+                 r"not necessary|unnecessary|is implied|are implied|not written|"
+                 r"won'?t be written")
+# [^.\n] in the gaps stops a match from spanning a sentence boundary, so a body
+# sentence followed by a real sign-off ("…to save room. Best wishes,") is safe.
 _META_RES = [
-    re.compile(r"(?i)\bas per\b.*\binstruction"),
-    re.compile(r"(?i)\bper (your|the)\b.*\binstruction"),
-    re.compile(r"(?i)\bas (instructed|directed|requested)\b.*\b(above|here|instruction)\b"),
-    re.compile(r"(?i)\b(sign[- ]?off|signature|greeting|closing|salutation)\b.*\b"
-               r"(not needed|not required|isn't needed|is omitted|omitted|removed|"
-               r"excluded|not necessary|as per|left out|skipped)\b"),
-    re.compile(r"(?i)\b(not needed|not required|isn't needed|is omitted|not necessary)\b.*\b"
-               r"(sign[- ]?off|signature|greeting|closing|salutation|as per|instruction)\b"),
+    re.compile(r"(?i)\bas per\b[^.\n]*\binstruction"),
+    re.compile(r"(?i)\bper (your|the)\b[^.\n]*\binstruction"),
+    re.compile(r"(?i)\bas (instructed|directed)\b[^.\n]{0,30}\b(above|here|instruction)\b"),
+    re.compile(rf"(?i)\b({_SIGNOFF_PHRASES})\b[^.\n]{{0,50}}?\b({_META_EXPLAIN})\b"),
+    re.compile(rf"(?i)\b({_META_EXPLAIN})\b[^.\n]{{0,50}}?\b({_SIGNOFF_PHRASES})\b"),
+    # generic "the greeting/signature/closing is … not needed" — strict: the noun
+    # must be the grammatical subject (immediately followed by a linking verb).
+    re.compile(r"(?i)\b(the )?(signature|greeting|closing|salutation|valediction)\b "
+               r"(is|are|was|were|will be|won'?t be)\b[^.\n]{0,25}\b"
+               r"(not needed|not required|omitted|unnecessary|not necessary|implied|not written)\b"),
+    re.compile(r"(?i)\binstructions? to (omit|skip|leave out|exclude|drop|remove)\b"),
     re.compile(r"(?i)^\s*\(?\s*note\s*:\s"),
 ]
 
 
 def _is_meta_line(s: str) -> bool:
     return any(r.search(s) for r in _META_RES)
+
+
+# A line that is ONLY a closing ("Thanks," "Best regards"). llama tends to stack
+# two ("Thanks,\nBest regards") — a real message has one. Keep the first, drop
+# any that immediately follow.
+_SIGNOFF_RE = re.compile(
+    r"(?i)^(thanks(?: so much| again| a lot)?|thank you|many thanks|cheers|"
+    r"best|best regards|kind regards|warm regards|warmly|regards|sincerely|"
+    r"best wishes|all the best|talk soon|take care|yours(?: truly| sincerely)?)"
+    r"\s*[.,!]?$")
+
+
+def _dedupe_signoff(lines: list[str]) -> list[str]:
+    """Collapse consecutive sign-off lines (blank lines between them ignored)
+    into just the first one."""
+    out, last_was_signoff = [], False
+    for ln in lines:
+        s = ln.strip()
+        if not s:
+            out.append(ln)
+            continue
+        if _SIGNOFF_RE.match(s):
+            if last_was_signoff:
+                # drop this duplicate closing, and any blank line we just kept
+                while out and not out[-1].strip():
+                    out.pop()
+                continue
+            last_was_signoff = True
+        else:
+            last_was_signoff = False
+        out.append(ln)
+    return out
 
 
 def _clean_draft(text: str) -> str:
@@ -1733,9 +1781,8 @@ def _clean_draft(text: str) -> str:
             if not s or re.fullmatch(r"(?i)(dear|hi|hello|hey|to)\s*[,:]?", s):
                 continue
         lines.append(cleaned)
-    # A draft shouldn't end on a dangling sign-off label with nothing after it
-    # left behind by a stripped meta line ("Thanks," / "Best regards," as the
-    # final line is fine; but trim trailing blank lines).
+    lines = _dedupe_signoff(lines)
+    # Collapse 3+ blank lines (left by removals) to a single blank line.
     return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 

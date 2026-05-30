@@ -328,6 +328,37 @@ ok("keeps 'Following the instructions on the box'",
    "box" in flow._clean_draft("Following the instructions on the box, I built it.").lower())
 ok("keeps 'Per our call' sentence",
    "summary" in flow._clean_draft("Per our call, here is the summary.").lower())
+# Doubled sign-off collapse ("Thanks,\nBest regards" → one closing)
+ok("collapses Thanks,+Best regards",
+   flow._clean_draft("Hi,\n\nLate today.\n\nThanks,\nBest regards").count("\n") <
+   "Hi,\n\nLate today.\n\nThanks,\nBest regards".count("\n"))
+ok("doubled sign-off ends on first closing",
+   flow._clean_draft("Hi,\n\nDone.\n\nThanks,\nBest regards,").strip().lower().endswith("thanks,"))
+ok("collapses across blank line too",
+   "best regards" not in flow._clean_draft("Hi,\n\nDone.\n\nThanks,\n\nBest regards").lower())
+ok("single sign-off preserved",
+   flow._clean_draft("Hi Tom,\n\nContract Friday.\n\nBest,").strip().lower().endswith("best,"))
+ok("inline 'Thanks.' not treated as sign-off dupe",
+   "really appreciate" in flow._clean_draft("Thanks so much! Really appreciate it.").lower())
+ok("body sentence ending in Thanks kept",
+   "dinner" in flow._clean_draft("Hey Jake, can't make dinner. Thanks.").lower())
+# Meta-leaks where the model NAMES the closing while explaining it (caught live)
+ok("catches 'Best regards is not needed here'", flow._is_meta_line("Best regards is not needed here"))
+ok("catches 'Best regards is implied…not written'",
+   flow._is_meta_line("Best regards is implied by the tone but not written here"))
+ok("catches 'The greeting is not needed'", flow._is_meta_line("The greeting is not needed for this message."))
+ok("catches 'instruction to omit the sign-off'", flow._is_meta_line("as it was an instruction to omit the sign-off"))
+# Adversarial false-positive guards (legit body+sign-off must survive)
+ok("keeps 'skip the meeting. Best regards,'",
+   "meeting" in flow._clean_draft("I'll skip the meeting tomorrow. Best regards,").lower())
+ok("keeps 'left out appetizers… Best wishes,'",
+   "appetizers" in flow._clean_draft("I left out the appetizers to save room. Best wishes,").lower())
+ok("keeps 'removed the old signature' sentence",
+   "system" in flow._clean_draft("We removed the old signature from the system yesterday.").lower())
+ok("keeps 'As per our agreement… Best regards,'",
+   "payment" in flow._clean_draft("As per our agreement, payment is due Friday. Best regards,").lower())
+ok("keeps 'greeting card list' sentence",
+   "card" in flow._clean_draft("Please omit me from the greeting card list.").lower())
 
 # ── SUMMARY ──────────────────────────────────────────────────────────────────
 print("\n" + "=" * 72)
