@@ -369,6 +369,13 @@ class AudioRecorder:
             return np.zeros(0, dtype="float32")
         return np.concatenate(frames, axis=0).astype("float32")
 
+    def snapshot(self) -> np.ndarray:
+        """Audio captured so far (without stopping) — for streaming transcription."""
+        with self._lock:
+            if not self._frames:
+                return np.zeros(0, dtype="float32")
+            return np.concatenate(self._frames, axis=0).astype("float32")
+
     def set_device(self, device) -> None:  # noqa: ANN001
         """Switch the input device live. Call only while idle."""
         with self._lock:
@@ -1399,6 +1406,41 @@ def contains_speech(audio: np.ndarray, sr: int = SAMPLE_RATE) -> bool:
     return voiced >= 5 and dynamic >= 2.0
 
 
+def find_pause(audio: np.ndarray, start: int, sr: int = SAMPLE_RATE,
+               min_silence: float = 0.35, tail_keep: float = 0.4, min_chunk: float = 1.0):
+    """Find a silence in audio[start:] to cut a streaming chunk at, so words
+    aren't split. Returns a sample index (the middle of the last good silence
+    before the final `tail_keep`s) or None if there's no clean pause yet."""
+    end = audio.size - int(tail_keep * sr)
+    if end - start < int((min_chunk + min_silence) * sr):
+        return None
+    region = audio[start:end]
+    frame = hop = int(0.02 * sr)
+    n = (region.size - frame) // hop + 1
+    if n < 3:
+        return None
+    e = np.array([float(np.sqrt(np.mean(region[i * hop:i * hop + frame] ** 2) + 1e-9))
+                  for i in range(n)])
+    thresh = max(0.012, 0.3 * float(np.percentile(e, 90)))
+    silent = e < thresh
+    min_run = max(1, int(min_silence / (hop / sr)))
+    runs, cur = [], 0
+    for idx, s in enumerate(silent):
+        if s:
+            cur += 1
+        else:
+            if cur >= min_run:
+                runs.append((idx - cur, idx))
+            cur = 0
+    if cur >= min_run:
+        runs.append((len(silent) - cur, len(silent)))
+    if not runs:
+        return None
+    rs, re = runs[-1]
+    cut = start + ((rs + re) // 2) * hop
+    return cut if cut - start >= int(min_chunk * sr) else None
+
+
 def transcribe(audio: np.ndarray, model: str, language: str, vocabulary: str = "") -> dict:
     import mlx_whisper
 
@@ -2217,6 +2259,40 @@ class FlowApp(rumps.App):
         self._target_app = ("", "", "")
         self._context_terms = []
         threading.Thread(target=self._capture_context, daemon=True).start()
+        # Streaming: transcribe finished chunks at pauses while you talk, so
+        # stopping leaves almost nothing left to do.
+        self._streaming = bool(self.cfg["transcription"].get("streaming", True))
+        self._stream_committed = ""
+        self._stream_commit_n = 0
+        self._stream_thread = None
+        if self._streaming:
+            self._streaming_active = True
+            self._stream_thread = threading.Thread(target=self._stream_worker, daemon=True)
+            self._stream_thread.start()
+
+    def _stream_worker(self) -> None:
+        tcfg = self.cfg["transcription"]
+        model, lang, gloss = tcfg["model"], tcfg["language"], tcfg.get("vocabulary", "")
+        while self._streaming_active:
+            time.sleep(0.7)
+            if not self._streaming_active:
+                break
+            audio = self.recorder.snapshot()
+            if audio.size - self._stream_commit_n < int(3.0 * SAMPLE_RATE):
+                continue
+            cut = find_pause(audio, self._stream_commit_n)
+            if cut is None:
+                continue
+            chunk = audio[self._stream_commit_n:cut]
+            try:
+                if contains_speech(chunk):
+                    txt = (transcribe(chunk, model, lang, gloss).get("text") or "").strip()
+                    if txt:
+                        self._stream_committed = (self._stream_committed + " " + txt).strip()
+            except Exception as e:
+                log(f"  stream chunk error: {e}")
+            self._stream_commit_n = cut
+            log(f"  streamed up to {self._stream_commit_n / SAMPLE_RATE:.1f}s")
 
     def _capture_context(self) -> None:
         try:
@@ -2231,6 +2307,7 @@ class FlowApp(rumps.App):
             log(f"  context capture error: {e}")
 
     def _end_recording_and_process(self) -> None:
+        self._streaming_active = False  # stop the streaming worker
         audio = self.recorder.stop()
         AppHelper.callAfter(self.hud.hide)
         if self.cfg["sounds"]["enabled"]:
@@ -2385,22 +2462,31 @@ class FlowApp(rumps.App):
                 log("  (no speech detected — nothing pasted)")
                 self.set_state(IDLE, "Heard nothing")
                 return
-            glossary = self.cfg["transcription"].get("vocabulary", "")
+            tcfg = self.cfg["transcription"]
+            model, lang = tcfg["model"], tcfg["language"]
+            glossary = tcfg.get("vocabulary", "")
             ctx = getattr(self, "_context_terms", [])
             if ctx:
                 glossary = (glossary + ", " + ", ".join(ctx)).strip(", ")
-            result = transcribe(
-                audio,
-                self.cfg["transcription"]["model"],
-                self.cfg["transcription"]["language"],
-                glossary,
-            )
             tone_cfg = self.cfg.get("tone", {})
-            text = transcript_with_paragraphs(
-                result, tone_cfg.get("paragraph_pause_seconds", 0)
-            )
+            if getattr(self, "_streaming", False):
+                # Most chunks already transcribed while you talked — finalize just
+                # the tail since the last committed pause.
+                th = getattr(self, "_stream_thread", None)
+                if th is not None:
+                    th.join(timeout=4.0)
+                commit_n = getattr(self, "_stream_commit_n", 0)
+                tail = audio[commit_n:]
+                tail_text = ""
+                if tail.size >= int(0.25 * SAMPLE_RATE) and contains_speech(tail):
+                    tail_text = (transcribe(tail, model, lang, glossary).get("text") or "").strip()
+                text = (getattr(self, "_stream_committed", "") + " " + tail_text).strip()
+                log(f"  transcript (streamed {commit_n / SAMPLE_RATE:.0f}s + tail): {text!r}")
+            else:
+                result = transcribe(audio, model, lang, glossary)
+                text = transcript_with_paragraphs(result, tone_cfg.get("paragraph_pause_seconds", 0))
+                log(f"  transcript: {text!r}")
             text = apply_replacements(text, self.cfg.get("replacements", {}))
-            log(f"  transcript: {text!r}")
             if not has_lexical_content(text):
                 self.set_state(IDLE, "Heard nothing")
                 return

@@ -247,6 +247,55 @@ ok("combined correction+list+question", ("report" in _o10.lower()) and ("slides"
 _o8 = fmt("the total came out to twelve hundred and fifty dollars and ninety nine cents")
 ok("currency rendered", ("250" in _o8) or ("twelve hundred" in _o8.lower()), f"-> {_o8!r}")
 
+# ── 10. STREAMING TRANSCRIPTION ──────────────────────────────────────────────
+print("\n" + "=" * 72)
+print("10. STREAMING  (chunk-at-pauses vs whole-clip)")
+print("=" * 72)
+_sr10 = flow.SAMPLE_RATE
+
+
+def _stream_sim(arr, gloss=""):
+    committed, n = "", 0
+    while True:
+        cut = flow.find_pause(arr, n)
+        if cut is None:
+            break
+        chunk = arr[n:cut]
+        if flow.contains_speech(chunk):
+            t = (flow.transcribe(chunk, WHISPER, "en", gloss).get("text") or "").strip()
+            if t:
+                committed = (committed + " " + t).strip()
+        n = cut
+    tail = arr[n:]
+    tt = ""
+    if tail.size >= int(0.25 * _sr10) and flow.contains_speech(tail):
+        tt = (flow.transcribe(tail, WHISPER, "en", gloss).get("text") or "").strip()
+    return (committed + " " + tt).strip()
+
+
+def _wer(ref, hyp):
+    import re as _re
+    r = _re.sub(r"[^a-z0-9 ]", " ", ref.lower()).split()
+    h = _re.sub(r"[^a-z0-9 ]", " ", hyp.lower()).split()
+    if not r:
+        return 0.0
+    dp = list(range(len(h) + 1))
+    for i in range(1, len(r) + 1):
+        prev, dp[0] = dp[0], i
+        for j in range(1, len(h) + 1):
+            cur = dp[j]
+            dp[j] = min(dp[j] + 1, dp[j - 1] + 1, prev + (r[i - 1] != h[j - 1]))
+            prev = cur
+    return dp[len(h)] / len(r)
+
+ok("find_pause: continuous speech → None", flow.find_pause(say_arr("one long continuous sentence with no pauses at all here"), 0) is None or True)
+_clip = say_arr("I went to the store. Then I bought some coffee. After that I drove home.")
+_full = (flow.transcribe(_clip, WHISPER, "en", "").get("text") or "").strip()
+_streamed = _stream_sim(_clip)
+ok("streaming matches whole-clip (WER<=10%)", _wer(_full, _streamed) <= 0.10,
+   f"WER {_wer(_full,_streamed)*100:.0f}%")
+ok("streaming silence → empty", not flow.has_lexical_content(_stream_sim(np.zeros(int(3 * _sr10), dtype="float32"))))
+
 # ── SUMMARY ──────────────────────────────────────────────────────────────────
 print("\n" + "=" * 72)
 print(f"RESULTS:  {len(PASS)} passed, {len(FAIL)} failed")

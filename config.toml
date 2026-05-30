@@ -39,6 +39,10 @@ vocabulary = "Claude Code, Anthropic, Ollama, Whisper, MLX, Wispr Flow, GitHub, 
 # and bias Whisper toward those spellings. Read happens at record-start (off the
 # critical path). Works in native fields; harmlessly no-ops in browsers/Electron.
 context_aware = true
+# Streaming: transcribe finished chunks at natural pauses WHILE you talk, so
+# stopping is near-instant (only the final bit is left). Set false for
+# whole-clip mode (slightly better cross-sentence accuracy, slower to appear).
+streaming = true
 
 [tone]
 # Detect vocal excitement from the recording (loudness + pitch variation,
