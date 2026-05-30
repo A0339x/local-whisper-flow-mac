@@ -359,6 +359,16 @@ ok("keeps 'As per our agreement… Best regards,'",
    "payment" in flow._clean_draft("As per our agreement, payment is due Friday. Best regards,").lower())
 ok("keeps 'greeting card list' sentence",
    "card" in flow._clean_draft("Please omit me from the greeting card list.").lower())
+# Whisper silence hallucinations ("thank you for watching") — the reported bug
+ok("write mode blocks 'thank you for watching'", flow.is_hallucination("Thank you for watching.", strict=True))
+ok("write mode blocks 'please subscribe'", flow.is_hallucination("Please subscribe!", strict=True))
+ok("write mode blocks bare 'thank you'", flow.is_hallucination("Thank you.", strict=True))
+ok("write mode blocks 'okay'/'you'", flow.is_hallucination("okay", strict=True) and flow.is_hallucination("you", strict=True))
+ok("write mode ALLOWS real instruction", not flow.is_hallucination("email my boss I'll be late", strict=True))
+ok("write mode ALLOWS 'write a thank you note'", not flow.is_hallucination("write a thank you note", strict=True))
+ok("dictation blocks 'thanks for watching'", flow.is_hallucination("Thanks for watching"))
+ok("dictation ALLOWS legit 'Thank you.'", not flow.is_hallucination("Thank you."))
+ok("dictation ALLOWS legit 'Okay.'", not flow.is_hallucination("Okay."))
 
 # ── SUMMARY ──────────────────────────────────────────────────────────────────
 print("\n" + "=" * 72)

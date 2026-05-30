@@ -1821,6 +1821,40 @@ def has_lexical_content(text: str) -> bool:
     return any(w not in _FILLER_WORDS for w in words)
 
 
+# Phrases Whisper invents on silence/room-tone (its training data is full of
+# YouTube outros). When the WHOLE transcript is just one of these, it's almost
+# certainly a hallucination from an empty recording — not something the user
+# said. Strong phantoms are blocked everywhere; a real dictation is never just
+# "thank you for watching".
+_HALLUCINATION_PHRASES = {
+    "thank you for watching", "thanks for watching", "thank you for watching this video",
+    "thank you for watching this", "thank you so much for watching", "thanks for watching this video",
+    "thank you for watching and i'll see you in the next video", "thank you all for watching",
+    "please subscribe", "please like and subscribe", "subscribe to my channel",
+    "don't forget to subscribe", "like and subscribe", "see you in the next video",
+    "see you next time", "i'll see you in the next video", "i'll see you next time",
+    "thanks for listening", "thank you for listening", "the end", "music", "applause",
+}
+# In Command/Write mode these short utterances are also meaningless as an
+# instruction, so we reject them too. (We do NOT reject these in dictation —
+# someone may legitimately dictate "thank you" or "okay".)
+_TRIVIAL_INSTRUCTIONS = _HALLUCINATION_PHRASES | {
+    "thank you", "thank you very much", "thanks", "okay", "ok", "you", "bye",
+    "bye bye", "yeah", "yes", "no", "hmm", "uh",
+}
+
+
+def is_hallucination(text: str, strict: bool = False) -> bool:
+    """True if the transcript is ONLY a known Whisper phantom phrase (no real
+    content), so we should treat it as if nothing was said. strict=True (Command/
+    Write mode) also rejects trivial one-word utterances that can't be a real
+    instruction."""
+    norm = re.sub(r"[^a-z' ]", " ", (text or "").lower())
+    norm = re.sub(r"\s+", " ", norm).strip()
+    table = _TRIVIAL_INSTRUCTIONS if strict else _HALLUCINATION_PHRASES
+    return norm in table
+
+
 def _focused_window_title(pid: int) -> str:
     """Title of the focused window (e.g. browser tab) — catches Gmail/Facebook/
     Instagram running inside a browser. Best-effort; '' if AX can't read it."""
@@ -2520,7 +2554,7 @@ class FlowApp(rumps.App):
             )
             instruction = (res.get("text") or "").strip()
             log(f"  command: {instruction!r}")
-            if not has_lexical_content(instruction):
+            if not has_lexical_content(instruction) or is_hallucination(instruction, strict=True):
                 self.set_state(IDLE, "Heard nothing")
                 return
             if generating:
@@ -2650,7 +2684,8 @@ class FlowApp(rumps.App):
                 text = transcript_with_paragraphs(result, tone_cfg.get("paragraph_pause_seconds", 0))
                 log(f"  transcript: {text!r}")
             text = apply_replacements(text, self.cfg.get("replacements", {}))
-            if not has_lexical_content(text):
+            if not has_lexical_content(text) or is_hallucination(text):
+                log("  (hallucination/empty transcript — nothing pasted)")
                 self.set_state(IDLE, "Heard nothing")
                 return
             tone = self._assess_tone(audio) if tone_cfg.get("detect_excitement", False) else None
