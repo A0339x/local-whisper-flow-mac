@@ -63,6 +63,10 @@ from AppKit import (
 )
 from Foundation import NSObject
 from PyObjCTools import AppHelper
+from ApplicationServices import (
+    AXUIElementCreateApplication,
+    AXUIElementCopyAttributeValue,
+)
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 
@@ -1426,27 +1430,48 @@ def has_lexical_content(text: str) -> bool:
     return any(w not in _FILLER_WORDS for w in words)
 
 
-def frontmost_app() -> tuple[str, str]:
-    """(localized name, bundle id) of the app you're currently in."""
+def _focused_window_title(pid: int) -> str:
+    """Title of the focused window (e.g. browser tab) — catches Gmail/Facebook/
+    Instagram running inside a browser. Best-effort; '' if AX can't read it."""
+    try:
+        ax = AXUIElementCreateApplication(pid)
+        err, win = AXUIElementCopyAttributeValue(ax, "AXFocusedWindow", None)
+        if err != 0 or win is None:
+            return ""
+        err, title = AXUIElementCopyAttributeValue(win, "AXTitle", None)
+        return str(title) if title else ""
+    except Exception:
+        return ""
+
+
+def frontmost_app() -> tuple[str, str, str]:
+    """(localized name, bundle id, window title) of the app you're in."""
     try:
         app = NSWorkspace.sharedWorkspace().frontmostApplication()
         if app is not None:
-            return (app.localizedName() or "", app.bundleIdentifier() or "")
+            return (
+                app.localizedName() or "",
+                app.bundleIdentifier() or "",
+                _focused_window_title(app.processIdentifier()),
+            )
     except Exception:
         pass
-    return ("", "")
+    return ("", "", "")
 
 
-def style_for_app(styles_cfg: dict, name: str, bundle: str) -> str:
-    """Return the tone instruction configured for the current app, or ''."""
+def style_for_app(styles_cfg: dict, name: str = "", bundle: str = "", title: str = "") -> str:
+    """Return the tone instruction configured for the current app/site, or ''.
+
+    Matches a config key (case-insensitive) against the app name, bundle id, and
+    window title — so "Gmail"/"Facebook"/"Instagram" match even in a browser."""
     if not styles_cfg or not styles_cfg.get("enabled", False):
         return ""
-    name_l, bundle_l = name.lower(), bundle.lower()
+    hay = f"{name} {bundle} {title}".lower()
     for key, val in styles_cfg.items():
         if key == "enabled" or not isinstance(val, str):
             continue
         k = key.lower()
-        if k and (k in name_l or k in bundle_l):
+        if k and k in hay:
             return val
     return ""
 
@@ -2021,7 +2046,7 @@ class FlowApp(rumps.App):
                 self.set_state(IDLE, "Heard nothing")
                 return
             tone = self._assess_tone(audio) if tone_cfg.get("detect_excitement", False) else None
-            style = style_for_app(self.cfg.get("styles", {}), *getattr(self, "_target_app", ("", "")))
+            style = style_for_app(self.cfg.get("styles", {}), *getattr(self, "_target_app", ("", "", "")))
             if style:
                 log(f"  style: {self._target_app[0]} → {style!r}")
             if self.cfg["formatting"]["enabled"]:

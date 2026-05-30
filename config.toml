@@ -72,12 +72,16 @@ enabled = true
 # that tone. NOTE: a style rephrases for tone, so it's LESS verbatim — that's the
 # point. Apps you don't list stay fully verbatim. Uncomment to enable per app.
 enabled = true
-# "Slack" = "casual and friendly, like a quick chat message"
-# "Discord" = "casual and friendly"
-# "Messages" = "casual and warm, like texting a friend"
-# "Mail" = "professional, polished, and courteous"
-# "Notion" = "clear, structured, and concise"
-# "Gmail" = "professional and friendly"
+# Social / chat → casual. Email → professional. Matches app name OR browser tab
+# title, so Gmail/Yahoo Mail/Facebook/Instagram work even inside a browser.
+"Slack"      = "casual and friendly, like a quick Slack message"
+"Snapchat"   = "very casual, fun, and playful, like a Snap to a friend"
+"Instagram"  = "casual, friendly, and upbeat, like a social caption or DM"
+"Facebook"   = "casual, friendly, and conversational"
+"Gmail"      = "professional, polished, and courteous, like a well-written email"
+"Yahoo Mail" = "professional, polished, and courteous, like a well-written email"
+"Outlook"    = "professional, polished, and courteous, like a well-written email"
+"Mail"       = "professional, polished, and courteous, like a well-written email"
 
 [replacements]
 # OFF by default, so your dictation stays faithful to exactly what you say.
