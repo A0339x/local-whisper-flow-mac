@@ -1909,26 +1909,37 @@ class FlowApp(rumps.App):
             self.set_state(IDLE, "Cancelled")
 
     def _begin_recording(self) -> None:
+        # Play the start cue FIRST — the moment you press the key — before any
+        # work, so it feels instant. (afplay is non-blocking.)
+        if self.cfg["sounds"]["enabled"]:
+            play(SOUND_START)
         try:
             self.recorder.start()
         except Exception as e:
             play(SOUND_ERROR)
+            self.set_state(IDLE, "Idle")
             rumps.notification("Voice-To-Text", "Could not start recording", str(e))
             return
-        self._target_app = frontmost_app()  # where the text will land
-        # Context-aware spelling: harvest proper nouns from the focused field now
-        # (off the critical path) to bias transcription toward the right spellings.
-        self._context_terms = []
-        if self.cfg["transcription"].get("context_aware", False):
-            self._context_terms = extract_context_terms(focused_field_text())
-            if self._context_terms:
-                log(f"  context terms: {', '.join(self._context_terms[:8])}"
-                    + ("…" if len(self._context_terms) > 8 else ""))
-        if self.cfg["sounds"]["enabled"]:
-            play(SOUND_START)
         AppHelper.callAfter(self.hud.show)
         self.set_state(RECORDING, "Recording… (tap hotkey or ✓ to stop)")
-        log(f"● recording started (app: {self._target_app[0] or '?'})")
+        log("● recording started")
+        # App + spelling-context reads run off-thread so the Accessibility calls
+        # never delay the cue. They finish well before you stop talking.
+        self._target_app = ("", "", "")
+        self._context_terms = []
+        threading.Thread(target=self._capture_context, daemon=True).start()
+
+    def _capture_context(self) -> None:
+        try:
+            self._target_app = frontmost_app()
+            if self.cfg["transcription"].get("context_aware", False):
+                self._context_terms = extract_context_terms(focused_field_text())
+            log(
+                f"  context: {self._target_app[0] or '?'}"
+                + (f" | {', '.join(self._context_terms[:8])}" if self._context_terms else "")
+            )
+        except Exception as e:
+            log(f"  context capture error: {e}")
 
     def _end_recording_and_process(self) -> None:
         audio = self.recorder.stop()
