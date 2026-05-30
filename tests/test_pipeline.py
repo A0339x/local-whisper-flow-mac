@@ -311,6 +311,23 @@ ok("plain greeting 'Hi,' survives (no name to strip)",
 ok("collapses blank-line gaps from removals",
    "\n\n\n" not in flow._clean_draft("Line one.\n[X]\n\n\n[Y]\nLine two."))
 ok("empty instruction → empty", flow.generate_text("", "http://x", "m") == "")
+# Meta-commentary: model talks ABOUT the instruction instead of writing the message
+_bug = ("Hi Peter,\n\nYour domain was updated, no renewal for two years.\n\n"
+        "Thanks,\nBest regards is not needed here as per the instruction")
+_fixed = flow._clean_draft(_bug)
+ok("strips 'as per the instruction' meta line", "instruction" not in _fixed.lower(), f"-> {_fixed!r}")
+ok("keeps the real body when stripping meta", "domain was updated" in _fixed.lower())
+ok("keeps valid 'Thanks,' sign-off", _fixed.strip().lower().endswith("thanks,"))
+ok("strips 'a sign-off is not needed' note",
+   "sign-off" not in flow._clean_draft("Hi,\n\nSee you then.\nA sign-off is not needed here.").lower())
+ok("strips leading 'Note:' meta", "note:" not in flow._clean_draft("Done.\nNote: kept it short.").lower())
+# False positives: legitimate sentences must survive
+ok("keeps 'As requested, find attached'",
+   "attached" in flow._clean_draft("As requested, please find the report attached.").lower())
+ok("keeps 'Following the instructions on the box'",
+   "box" in flow._clean_draft("Following the instructions on the box, I built it.").lower())
+ok("keeps 'Per our call' sentence",
+   "summary" in flow._clean_draft("Per our call, here is the summary.").lower())
 
 # ── SUMMARY ──────────────────────────────────────────────────────────────────
 print("\n" + "=" * 72)

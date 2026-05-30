@@ -1678,22 +1678,53 @@ CRITICAL: never write bracketed placeholders like [Name], [Your Name], [Manager]
 [Date], or [Company]. You don't know those values. Instead, leave them out entirely: \
 open with a plain "Hi," (no name) and sign off with a plain "Thanks," or "Best," \
 (no name), or omit the greeting/signature altogether. A draft the user can send \
-without editing is the goal."""
+without editing is the goal.
+
+CRITICAL: if the instruction tells you what to leave OUT or change (no sign-off, no \
+greeting, keep it short, don't mention X), just silently do it. NEVER write a \
+sentence that talks about the instruction or explains what you included or left out \
+(no "as per the instruction", no "a sign-off is not needed here", no notes). Output \
+only the message itself — nothing a recipient wouldn't expect to read."""
 
 # Strip any bracketed placeholder the model slips in anyway, e.g. "[Your Name]".
 _PLACEHOLDER_RE = re.compile(r"[\[\<]\s*[^\[\]\<\>\n]{0,40}?\s*[\]\>]")
 
+# Lines where the model talks ABOUT the task instead of writing the message.
+# High-precision: real emails/messages don't reference "the instruction" or
+# explain which sign-off/greeting was or wasn't included.
+_META_RES = [
+    re.compile(r"(?i)\bas per\b.*\binstruction"),
+    re.compile(r"(?i)\bper (your|the)\b.*\binstruction"),
+    re.compile(r"(?i)\bas (instructed|directed|requested)\b.*\b(above|here|instruction)\b"),
+    re.compile(r"(?i)\b(sign[- ]?off|signature|greeting|closing|salutation)\b.*\b"
+               r"(not needed|not required|isn't needed|is omitted|omitted|removed|"
+               r"excluded|not necessary|as per|left out|skipped)\b"),
+    re.compile(r"(?i)\b(not needed|not required|isn't needed|is omitted|not necessary)\b.*\b"
+               r"(sign[- ]?off|signature|greeting|closing|salutation|as per|instruction)\b"),
+    re.compile(r"(?i)^\s*\(?\s*note\s*:\s"),
+]
+
+
+def _is_meta_line(s: str) -> bool:
+    return any(r.search(s) for r in _META_RES)
+
 
 def _clean_draft(text: str) -> str:
-    """Remove leftover [placeholders] and tidy the lines they leave behind.
+    """Remove leftover [placeholders] and meta-commentary, tidy the result.
 
-    Only lines that ACTUALLY contained a placeholder are eligible to be dropped,
-    so a legitimate bare greeting ("Hi,") or sign-off ("Thanks,") is preserved
-    while a name-stripped one ("Dear [Name]," → "Dear ,") or a placeholder-only
-    line ("[Your Name]" → "") is removed.
+    Two kinds of junk get dropped:
+      • placeholder lines — a line that was only "[Your Name]" → "", or a greeting
+        that lost its name ("Dear [Name]," → "Dear ,"). A legitimate bare greeting
+        ("Hi,") or sign-off ("Thanks,") is preserved.
+      • meta-commentary — a line where the model talks about the instruction
+        instead of writing the message ("Best regards is not needed here as per
+        the instruction").
     """
     lines = []
     for ln in text.split("\n"):
+        s_full = ln.strip()
+        if s_full and _is_meta_line(s_full):
+            continue
         had_placeholder = bool(_PLACEHOLDER_RE.search(ln))
         cleaned = _PLACEHOLDER_RE.sub("", ln).rstrip()
         if had_placeholder:
@@ -1702,7 +1733,9 @@ def _clean_draft(text: str) -> str:
             if not s or re.fullmatch(r"(?i)(dear|hi|hello|hey|to)\s*[,:]?", s):
                 continue
         lines.append(cleaned)
-    # Collapse 3+ blank lines (left by removals) to a single blank line.
+    # A draft shouldn't end on a dangling sign-off label with nothing after it
+    # left behind by a stripped meta line ("Thanks," / "Best regards," as the
+    # final line is fine; but trim trailing blank lines).
     return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 
