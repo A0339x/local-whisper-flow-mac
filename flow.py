@@ -689,15 +689,7 @@ class SettingsController(NSObject):
         self._dict_val, self._dict_btn = shortcut_row(236, "Dictation key:", "changeDictation:")
         self._cmd_val, self._cmd_btn = shortcut_row(200, "Command key:", "changeCommand:")
 
-        fmt = FirstMouseButton.alloc().initWithFrame_(NSMakeRect(20, 162, 384, 22))
-        fmt.setButtonType_(NSButtonTypeSwitch)
-        fmt.setTitle_("Smart formatting — clean up dictation (off = faster, raw)")
-        fmt.setTarget_(self)
-        fmt.setAction_("formattingToggled:")
-        cv.addSubview_(fmt)
-        self._fmt_btn = fmt
-
-        hist = FirstMouseButton.alloc().initWithFrame_(NSMakeRect(20, 120, 200, 30))
+        hist = FirstMouseButton.alloc().initWithFrame_(NSMakeRect(20, 150, 200, 30))
         hist.setTitle_("Dictation History…")
         hist.setBezelStyle_(1)
         hist.setTarget_(self)
@@ -760,9 +752,6 @@ class SettingsController(NSObject):
         self._warm_btn.setState_(
             1 if self._app.cfg["audio"].get("warm_mic", True) else 0
         )
-        self._fmt_btn.setState_(
-            1 if self._app.cfg.get("formatting", {}).get("enabled", True) else 0
-        )
         self._refresh_shortcuts()
 
     def show(self) -> None:
@@ -791,9 +780,6 @@ class SettingsController(NSObject):
 
     def warmToggled_(self, sender):  # noqa: N802
         self._app.apply_warm(bool(sender.state()))
-
-    def formattingToggled_(self, sender):  # noqa: N802
-        self._app.apply_formatting(bool(sender.state()))
 
 
 class HistoryController(NSObject):
@@ -2215,10 +2201,6 @@ class FlowApp(rumps.App):
         )
 
         self.status_item = rumps.MenuItem("Idle")
-        self.fmt_item = rumps.MenuItem(
-            "Smart formatting", callback=self.toggle_formatting
-        )
-        self.fmt_item.state = bool(cfg["formatting"]["enabled"])
         self.mic_menu = rumps.MenuItem("Microphone")
         self.settings = SettingsController.alloc().initWithApp_(self)
         self.history = HistoryController.alloc().initWithApp_(self)
@@ -2232,7 +2214,6 @@ class FlowApp(rumps.App):
             rumps.MenuItem("Dictation History…", callback=self.open_history),
             rumps.MenuItem("Setup / Onboarding…", callback=self.open_onboarding),
             self.mic_menu,
-            self.fmt_item,
             None,
             rumps.MenuItem(f"Dictate: {KEY_LABELS.get(cfg['hotkey']['key'], cfg['hotkey']['key'])}", callback=None),
             rumps.MenuItem(f"Command Mode: {KEY_LABELS.get(cfg['hotkey'].get('command_key', ''), cfg['hotkey'].get('command_key', '') or 'off')}", callback=None),
@@ -2240,7 +2221,6 @@ class FlowApp(rumps.App):
                 f"Whisper: {cfg['transcription']['model'].split('/')[-1]}",
                 callback=None,
             ),
-            rumps.MenuItem(f"Formatter: {cfg['formatting']['model']}", callback=None),
             None,
             rumps.MenuItem("Quit", callback=rumps.quit_application),
         ]
@@ -2339,12 +2319,6 @@ class FlowApp(rumps.App):
         self.cfg["audio"]["warm_mic"] = on
         self._persist("warm_mic", on)
         log(f"warm mic -> {on}")
-
-    def apply_formatting(self, on: bool) -> None:
-        # Picked up live by _process on the next dictation — no re-init needed.
-        self.cfg.setdefault("formatting", {})["enabled"] = on
-        self._persist("enabled", on, section="formatting")
-        log(f"smart formatting -> {on}")
 
     @staticmethod
     def _fmt_value(value) -> str:  # noqa: ANN001
@@ -2540,10 +2514,6 @@ class FlowApp(rumps.App):
             self._command_down = False
             if tapped and not self._capturing:
                 self.command_toggle()
-
-    def toggle_formatting(self, sender: rumps.MenuItem) -> None:
-        sender.state = not sender.state
-        self.cfg["formatting"]["enabled"] = bool(sender.state)
 
     # ── Core flow ──
     def toggle(self) -> None:
@@ -2845,28 +2815,9 @@ class FlowApp(rumps.App):
                 log("  (hallucination/empty transcript — nothing pasted)")
                 self.set_state(IDLE, "Heard nothing")
                 return
-            tone = self._assess_tone(audio) if tone_cfg.get("detect_excitement", False) else None
-            style = style_for_app(self.cfg.get("styles", {}), *getattr(self, "_target_app", ("", "", "")))
-            if style:
-                log(f"  style: {self._target_app[0]} → {style!r}")
-            if self.cfg["formatting"]["enabled"]:
-                self.status_item.title = "Formatting…"
-                try:
-                    text = format_text(
-                        text,
-                        self.cfg["formatting"]["ollama_url"],
-                        self.cfg["formatting"]["model"],
-                        tone=tone,
-                        style=style,
-                    )
-                    log(f"  formatted : {text!r}")
-                except Exception as e:
-                    log(f"  formatting skipped (Ollama error): {e}")
-                    rumps.notification(
-                        "Voice-To-Text",
-                        "Formatting skipped (Ollama error)",
-                        str(e),
-                    )
+            # Dictation is raw Whisper output by design — no LLM cleanup, for
+            # speed. Polished writing is available on demand via Command/Write
+            # mode (left Option).
             history_append(text)
             text = self._maybe_prepend_space(text)
             deliver_text(text, self.cfg)
