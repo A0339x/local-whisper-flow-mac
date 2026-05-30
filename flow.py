@@ -142,6 +142,11 @@ KEY_LABELS = {
 
 SAMPLE_RATE = 16_000
 
+# A trigger key (Right/Left Option) only fires if it's TAPPED — pressed and
+# released alone within this window, with no other key in between — so using it
+# as a modifier (Option+Arrow, accents, etc.) never starts dictation.
+TAP_MAX_SECONDS = 1.0
+
 SOUND_START = "/System/Library/Sounds/Tink.aiff"
 SOUND_STOP = "/System/Library/Sounds/Pop.aiff"
 SOUND_CANCEL = "/System/Library/Sounds/Bottle.aiff"
@@ -1862,8 +1867,12 @@ class FlowApp(rumps.App):
 
         self._trigger = self._resolve_trigger(self.cfg["hotkey"]["key"], keyboard.Key.alt_r)
         self._command_trigger = self._resolve_trigger(self.cfg["hotkey"].get("command_key", ""))
-        self._trigger_down = False  # debounce auto-repeat while held
+        self._trigger_down = False
+        self._trigger_modified = False  # another key pressed while held → modifier use
+        self._trigger_t = 0.0
         self._command_down = False
+        self._command_modified = False
+        self._command_t = 0.0
         self._command_selection = None
         self._command_prev_clip = None
         self._listener = keyboard.Listener(
@@ -1889,24 +1898,44 @@ class FlowApp(rumps.App):
             self._context_changed = True
 
     def _on_press(self, key) -> None:  # noqa: ANN001
+        now = time.time()
         if key == self._trigger:
             if not self._trigger_down:
                 self._trigger_down = True
-                self.toggle()
-        elif self._command_trigger is not None and key == self._command_trigger:
+                self._trigger_modified = False
+                self._trigger_t = now
+            return
+        if self._command_trigger is not None and key == self._command_trigger:
             if not self._command_down:
                 self._command_down = True
-                self.command_toggle()
-        elif time.time() - self._paste_done_ts > 0.5:
+                self._command_modified = False
+                self._command_t = now
+            return
+        # Any other key: if a trigger is held, it's being used as a MODIFIER
+        # (e.g. Option+Arrow) — flag it so we don't fire on release.
+        if self._trigger_down:
+            self._trigger_modified = True
+        if self._command_down:
+            self._command_modified = True
+        if now - self._paste_done_ts > 0.5:
             # A real keystroke (not our own synthetic Cmd+V right after a paste)
             # means you've typed/moved — don't auto-space the next dictation.
             self._context_changed = True
 
     def _on_release(self, key) -> None:  # noqa: ANN001
+        now = time.time()
         if key == self._trigger:
+            tapped = (self._trigger_down and not self._trigger_modified
+                      and now - self._trigger_t <= TAP_MAX_SECONDS)
             self._trigger_down = False
+            if tapped:
+                self.toggle()
         elif self._command_trigger is not None and key == self._command_trigger:
+            tapped = (self._command_down and not self._command_modified
+                      and now - self._command_t <= TAP_MAX_SECONDS)
             self._command_down = False
+            if tapped:
+                self.command_toggle()
 
     def toggle_formatting(self, sender: rumps.MenuItem) -> None:
         sender.state = not sender.state
