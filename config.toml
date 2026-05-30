@@ -37,7 +37,7 @@ vocabulary = "Claude Code, Anthropic, Ollama, Whisper, MLX, Wispr Flow, GitHub, 
 detect_excitement = true
 # How far above your normal loudness/pitch counts as "excited"
 # (1.0 = your average; higher = needs more energy to trigger).
-excitement_sensitivity = 1.3
+excitement_sensitivity = 1.5
 # Insert a paragraph break when you pause at least this many seconds mid-speech.
 # Set 0 to disable.
 paragraph_pause_seconds = 1.5

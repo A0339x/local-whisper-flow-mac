@@ -1276,7 +1276,8 @@ can't wait", "no way", "yes finally"). Use "!" SPARINGLY — only when the words
 genuinely convey excitement, at most one per sentence; otherwise a period. \
 Do not add excitement that isn't in the wording — UNLESS a [Voice tone: ...] \
 note says the speaker sounded excited, in which case you MAY use exclamation \
-marks for emphatic sentences even when the wording alone is neutral.
+marks for emphatic sentences even when the wording alone is neutral. A question \
+always ends with a single "?" — never "?!".
 3. Removing ONLY non-lexical fillers: "um", "uh", "er", "ah", "hmm", "mm", and \
 stuttered repetitions / false starts (e.g. "the the" → "the", "I-I went" → "I went").
 4. Applying explicit spoken self-corrections. If the speaker corrects themselves \
@@ -1347,9 +1348,11 @@ def format_text(text: str, url: str, model: str, tone: str | None = None) -> str
     user_content = _INSTRUCTION + text
     if tone == "excited":
         user_content = (
-            "[Voice tone: the speaker sounded notably excited/energetic — you may "
-            "use exclamation marks for emphatic sentences even if the wording is "
-            "neutral, still at most one per sentence and only where natural.]\n\n"
+            "[Voice tone: the speaker sounded a bit energetic. You MAY end ONE "
+            "clearly emphatic sentence with '!' if it genuinely fits — but keep "
+            "questions ending in '?' (NEVER '?!'), keep neutral statements ending "
+            "in '.', never add or change words, and never exclaim more than one "
+            "sentence.]\n\n"
         ) + user_content
     messages.append({"role": "user", "content": user_content})
     resp = requests.post(
@@ -1729,21 +1732,23 @@ class FlowApp(rumps.App):
         if feat is None:
             return None
         b = self._tone_baseline
-        sens = self.cfg.get("tone", {}).get("excitement_sensitivity", 1.35)
+        sens = self.cfg.get("tone", {}).get("excitement_sensitivity", 1.5)
         excited = None
-        if b["count"] >= 3:
+        if b["count"] >= 4:
             rms_ratio = feat["rms"] / max(1e-6, b["rms"])
-            f0_ratio = feat["f0_std"] / max(1e-6, b["f0_std"]) if b["f0_std"] > 0 else 1.0
-            if rms_ratio >= sens or f0_ratio >= sens:
+            f0_ratio = feat["f0_std"] / b["f0_std"] if b["f0_std"] > 0 else 1.0
+            # Loudness is the primary, reliable signal; pitch only reinforces a
+            # clip that is ALSO at least a bit louder than usual.
+            if rms_ratio >= sens or (rms_ratio >= 1.2 and f0_ratio >= sens):
                 excited = "excited"
-        # Update the calm baseline (EMA) on neutral clips and during warm-up.
-        if excited is None or b["count"] < 3:
-            a = 0.2
-            if b["count"] == 0:
-                b["rms"], b["f0_std"] = feat["rms"], feat["f0_std"]
-            else:
-                b["rms"] = (1 - a) * b["rms"] + a * feat["rms"]
-                b["f0_std"] = (1 - a) * b["f0_std"] + a * feat["f0_std"]
+        # Adapt to your TYPICAL level on EVERY clip (slow EMA) so the baseline
+        # tracks your normal voice and can never get stuck flagging everything.
+        a = 0.1
+        if b["count"] == 0:
+            b["rms"], b["f0_std"] = feat["rms"], feat["f0_std"]
+        else:
+            b["rms"] = (1 - a) * b["rms"] + a * feat["rms"]
+            b["f0_std"] = (1 - a) * b["f0_std"] + a * feat["f0_std"]
         b["count"] += 1
         self._save_tone_baseline()
         log(
