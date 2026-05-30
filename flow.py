@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import random
 import re
 import subprocess
@@ -1644,7 +1645,44 @@ unless the instruction says to change it. If the instruction is a transformation
 list…), do exactly that. If it's unclear, make the smallest reasonable edit."""
 
 
-def apply_command(instruction: str, selected: str, url: str, model: str) -> str:
+def chat_complete(messages: list, url: str, model: str, temperature: float,
+                  base_url: str = "", api_key_env: str = "OPENAI_API_KEY") -> str:
+    """Run a chat completion and return the assistant text.
+
+    Two backends, chosen by `base_url`:
+      • "" (default) → local Ollama at `url` (/api/chat, keeps the model warm).
+      • set          → any OpenAI-compatible endpoint (/chat/completions) with a
+        Bearer key read from the `api_key_env` environment variable. Lets
+        Command/Write mode offload to OpenAI so the heavy local model never
+        loads (frees RAM), while dictation stays fully local.
+    """
+    base = (base_url or "").strip()
+    if base:
+        key = os.environ.get(api_key_env, "").strip()
+        if not key:
+            raise RuntimeError(
+                f"Cloud Write mode is on (command_base_url set) but ${api_key_env} "
+                f"is empty. Export your API key or clear command_base_url.")
+        resp = requests.post(
+            f"{base.rstrip('/')}/chat/completions",
+            headers={"Authorization": f"Bearer {key}"},
+            json={"model": model, "messages": messages, "temperature": temperature},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        return (resp.json()["choices"][0]["message"]["content"] or "").strip()
+    resp = requests.post(
+        f"{url.rstrip('/')}/api/chat",
+        json={"model": model, "messages": messages, "stream": False,
+              "options": {"temperature": temperature}, "keep_alive": "1h"},
+        timeout=120,
+    )
+    resp.raise_for_status()
+    return (resp.json()["message"]["content"] or "").strip()
+
+
+def apply_command(instruction: str, selected: str, url: str, model: str,
+                  base_url: str = "", api_key_env: str = "OPENAI_API_KEY") -> str:
     """Apply a spoken instruction to selected text (Command Mode)."""
     if not (selected and selected.strip()):
         return selected
@@ -1652,14 +1690,7 @@ def apply_command(instruction: str, selected: str, url: str, model: str) -> str:
         {"role": "system", "content": COMMAND_SYSTEM},
         {"role": "user", "content": f"Instruction: {instruction}\n\nSelected text:\n{selected}"},
     ]
-    resp = requests.post(
-        f"{url.rstrip('/')}/api/chat",
-        json={"model": model, "messages": messages, "stream": False,
-              "options": {"temperature": 0.3}, "keep_alive": "1h"},
-        timeout=120,
-    )
-    resp.raise_for_status()
-    out = resp.json()["message"]["content"].strip()
+    out = chat_complete(messages, url, model, 0.3, base_url, api_key_env)
     if len(out) >= 2 and out[0] == out[-1] and out[0] in "\"'":
         out = out[1:-1].strip()
     return out or selected
@@ -1817,7 +1848,8 @@ def _clean_draft(text: str) -> str:
 
 
 def generate_text(instruction: str, url: str, model: str, style: str = "",
-                  email: bool = False) -> str:
+                  email: bool = False, base_url: str = "",
+                  api_key_env: str = "OPENAI_API_KEY") -> str:
     """Draft fresh content from a spoken instruction (Command Mode, no selection).
 
     When `email` is False (a chat/message/note, not an email client), the draft
@@ -1837,14 +1869,7 @@ def generate_text(instruction: str, url: str, model: str, style: str = "",
         {"role": "system", "content": sys},
         {"role": "user", "content": f"Write this for me: {instruction}"},
     ]
-    resp = requests.post(
-        f"{url.rstrip('/')}/api/chat",
-        json={"model": model, "messages": messages, "stream": False,
-              "options": {"temperature": 0.5}, "keep_alive": "1h"},
-        timeout=120,
-    )
-    resp.raise_for_status()
-    out = resp.json()["message"]["content"].strip()
+    out = chat_complete(messages, url, model, 0.5, base_url, api_key_env)
     if len(out) >= 2 and out[0] == out[-1] and out[0] in "\"'":
         out = out[1:-1].strip()
     out = _clean_draft(out)
@@ -2618,21 +2643,27 @@ class FlowApp(rumps.App):
                 self.set_state(IDLE, "Heard nothing")
                 return
             # Command/Write mode uses a stronger model than dictation formatting
-            # if one is configured — harder task, less latency-sensitive.
+            # if one is configured — harder task, less latency-sensitive. It can
+            # also run on a cloud OpenAI-compatible endpoint (command_base_url) so
+            # the heavy local model never loads; dictation always stays local.
             fcfg = self.cfg["formatting"]
             cmd_model = fcfg.get("command_model") or fcfg["model"]
+            base_url = fcfg.get("command_base_url", "")
+            key_env = fcfg.get("command_api_key_env", "OPENAI_API_KEY")
+            where = "cloud" if (base_url or "").strip() else "local"
             if generating:
                 self.status_item.title = "Writing…"
                 app_ctx = getattr(self, "_command_app", ("", "", ""))
                 style = style_for_app(self.cfg.get("styles", {}), *app_ctx)
                 email = is_email_context(*app_ctx)
-                result = generate_text(instruction, fcfg["ollama_url"], cmd_model, style, email=email)
-                log(f"  drafted ({cmd_model}, email={email}) → {result!r}")
+                result = generate_text(instruction, fcfg["ollama_url"], cmd_model,
+                                       style, email=email, base_url=base_url, api_key_env=key_env)
+                log(f"  drafted ({cmd_model} {where}, email={email}) → {result!r}")
             else:
                 self.status_item.title = "Editing…"
-                result = apply_command(
-                    instruction, self._command_selection, fcfg["ollama_url"], cmd_model)
-                log(f"  edited ({cmd_model}) → {result!r}")
+                result = apply_command(instruction, self._command_selection,
+                                       fcfg["ollama_url"], cmd_model, base_url, key_env)
+                log(f"  edited ({cmd_model} {where}) → {result!r}")
             if not result:
                 self.set_state(IDLE, "Nothing to write" if generating else "No change")
                 return

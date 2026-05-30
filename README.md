@@ -47,6 +47,10 @@ Apple won't let software toggle those). Then tap **Right Option** and start talk
     to my manager saying I'll be late", "message Jake to reschedule dinner") and
     the AI drafts it and types it at your cursor — styled to the app
     (professional in Gmail, casual in Slack), with no `[placeholders]` to fill in.
+  - Uses a stronger model (`qwen2.5:32b`) than dictation for better drafts. To
+    save ~21 GB of RAM, you can optionally point Write/Command mode at an
+    OpenAI-compatible API (`[formatting] command_base_url`) — your dictation still
+    runs 100% locally; only Write-mode text is sent to the API.
 - 🕘 **Dictation history** — every dictation is saved (`history.jsonl`); open the
   history window (Settings ▸ Dictation History…) and double-click any past
   entry to copy it back to the clipboard.

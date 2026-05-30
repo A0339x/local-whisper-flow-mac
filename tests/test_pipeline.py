@@ -383,6 +383,16 @@ ok("keeps inline 'Hey Jake,… Thanks!'",
    flow._strip_scaffolding("Hey Jake, can't make dinner. Thanks!") == "Hey Jake, can't make dinner. Thanks!")
 ok("plain body unchanged by stripper",
    flow._strip_scaffolding("The deploy is done and looks good.") == "The deploy is done and looks good.")
+# Cloud backend routing: missing API key → clear error, not a crash
+import os as _os
+_os.environ.pop("VTT_TEST_KEY", None)
+_raised = False
+try:
+    flow.chat_complete([{"role": "user", "content": "hi"}], "http://x", "gpt-4o-mini",
+                       0.5, base_url="https://api.openai.com/v1", api_key_env="VTT_TEST_KEY")
+except RuntimeError:
+    _raised = True
+ok("cloud path with no key raises clean error", _raised)
 
 # ── SUMMARY ──────────────────────────────────────────────────────────────────
 print("\n" + "=" * 72)

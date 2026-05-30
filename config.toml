@@ -75,6 +75,18 @@ model = "llama3.1:8b"
 # "" to reuse `model` above. qwen2.5:32b is a strong local choice if you have the
 # RAM; it loads on first use (~10s) then stays warm.
 command_model = "qwen2.5:32b"
+# OPTIONAL — offload Command/Write mode to a cloud OpenAI-compatible API so the
+# heavy local model never loads (frees ~21GB of RAM for heavier work). Your
+# DICTATION always stays 100% local; only Write/Command text is sent to the API.
+# To enable OpenAI:
+#   1. command_base_url = "https://api.openai.com/v1"
+#   2. command_model    = "gpt-4o-mini"   (fast + ~$0.0002/draft; or "gpt-4o")
+#   3. export OPENAI_API_KEY="sk-…" in your shell (the key is read from the env,
+#      never stored here). Restart the app.
+# Leave command_base_url = "" to stay fully local (default). Works with any
+# OpenAI-compatible endpoint (OpenAI, OpenRouter, a local server, …).
+command_base_url = ""
+command_api_key_env = "OPENAI_API_KEY"
 
 [paste]
 # Auto-paste the result into the focused app (simulates Cmd+V).
