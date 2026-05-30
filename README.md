@@ -38,6 +38,15 @@ Apple won't let software toggle those). Then tap **Right Option** and start talk
   own adaptive baseline; if you sound excited it adds exclamation marks even when
   the words are neutral, and a mid-sentence pause becomes a paragraph break.
   Tunable via `[tone]` in `config.toml`.
+- ✏️ **Command / Write key** (Left Option) — one key, two jobs depending on
+  whether you've selected text:
+  - **Text selected → edit it.** Speak an instruction ("make this friendlier",
+    "turn into bullet points", "fix the grammar", "translate to Spanish") and the
+    AI rewrites your selection in place.
+  - **Nothing selected → write it for you.** Speak what you want ("draft an email
+    to my manager saying I'll be late", "message Jake to reschedule dinner") and
+    the AI drafts it and types it at your cursor — styled to the app
+    (professional in Gmail, casual in Slack), with no `[placeholders]` to fill in.
 - 🕘 **Dictation history** — every dictation is saved (`history.jsonl`); open the
   history window (Settings ▸ Dictation History…) and double-click any past
   entry to copy it back to the clipboard.

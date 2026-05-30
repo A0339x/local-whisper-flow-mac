@@ -9,10 +9,15 @@
 key = "alt_r"
 # Key combo (pynput format) that opens the Settings window. Set "" to disable.
 settings_combo = "<ctrl>+<alt>+<cmd>+m"
-# Command Mode: select text in any app, tap this key, speak an edit ("make this
-# friendlier", "turn into bullet points", "fix the grammar", "translate to
-# Spanish"), tap again — the AI rewrites your selection in place. Left Option by
-# default. Set "" to disable.
+# Command key (Left Option by default) does two things depending on whether you
+# have text selected when you tap it:
+#   • TEXT SELECTED  → Edit mode: speak an edit ("make this friendlier", "turn
+#     into bullet points", "fix the grammar", "translate to Spanish") and the AI
+#     rewrites your selection in place.
+#   • NOTHING SELECTED → Write mode: speak what you want written ("draft an email
+#     to my manager saying I'll be late", "message Jake to reschedule dinner")
+#     and the AI drafts it and types it at your cursor — styled to the app
+#     (professional in Gmail, casual in Slack). Set "" to disable.
 command_key = "alt_l"
 
 [audio]

@@ -296,6 +296,22 @@ ok("streaming matches whole-clip (WER<=10%)", _wer(_full, _streamed) <= 0.10,
    f"WER {_wer(_full,_streamed)*100:.0f}%")
 ok("streaming silence → empty", not flow.has_lexical_content(_stream_sim(np.zeros(int(3 * _sr10), dtype="float32"))))
 
+# ── 11. WRITE MODE  (generate draft → strip placeholders) ────────────────────
+print("\n" + "=" * 72)
+print("11. WRITE MODE  (_clean_draft placeholder stripping)")
+print("=" * 72)
+ok("strips [Your Name] placeholder", "[" not in flow._clean_draft("Thanks,\n[Your Name]"))
+ok("strips <angle> placeholder", "<" not in flow._clean_draft("Hi <Name>, see attached."))
+ok("drops dangling 'Dear [X],' greeting line",
+   "dear" not in flow._clean_draft("Dear [Manager's Name],\n\nI will be late.\n\nBest,").lower())
+ok("keeps real body text intact",
+   "i will be late" in flow._clean_draft("Dear [Name],\n\nI will be late.\n\n[Your Name]").lower())
+ok("plain greeting 'Hi,' survives (no name to strip)",
+   flow._clean_draft("Hi,\n\nLunch at noon?").lower().startswith("hi,"))
+ok("collapses blank-line gaps from removals",
+   "\n\n\n" not in flow._clean_draft("Line one.\n[X]\n\n\n[Y]\nLine two."))
+ok("empty instruction → empty", flow.generate_text("", "http://x", "m") == "")
+
 # ── SUMMARY ──────────────────────────────────────────────────────────────────
 print("\n" + "=" * 72)
 print(f"RESULTS:  {len(PASS)} passed, {len(FAIL)} failed")

@@ -1665,6 +1665,71 @@ def apply_command(instruction: str, selected: str, url: str, model: str) -> str:
     return out or selected
 
 
+GENERATE_SYSTEM = """You are a ghostwriter. The user spoke an instruction describing \
+something they want written for them (an email, a message, a reply, a note, a \
+paragraph…). Write the finished piece and output ONLY that text — ready to send or \
+paste as-is. No preamble, no "Here is…", no quotes around it, no commentary, no \
+explanation. Write in the first person as the user. Match the length and formality \
+the instruction implies: a quick message stays short; an email gets a natural \
+greeting and sign-off only if the instruction implies one. If the instruction names \
+a recipient or details, use them; do not invent facts the user didn't give.
+
+CRITICAL: never write bracketed placeholders like [Name], [Your Name], [Manager], \
+[Date], or [Company]. You don't know those values. Instead, leave them out entirely: \
+open with a plain "Hi," (no name) and sign off with a plain "Thanks," or "Best," \
+(no name), or omit the greeting/signature altogether. A draft the user can send \
+without editing is the goal."""
+
+# Strip any bracketed placeholder the model slips in anyway, e.g. "[Your Name]".
+_PLACEHOLDER_RE = re.compile(r"[\[\<]\s*[^\[\]\<\>\n]{0,40}?\s*[\]\>]")
+
+
+def _clean_draft(text: str) -> str:
+    """Remove leftover [placeholders] and tidy the lines they leave behind.
+
+    Only lines that ACTUALLY contained a placeholder are eligible to be dropped,
+    so a legitimate bare greeting ("Hi,") or sign-off ("Thanks,") is preserved
+    while a name-stripped one ("Dear [Name]," → "Dear ,") or a placeholder-only
+    line ("[Your Name]" → "") is removed.
+    """
+    lines = []
+    for ln in text.split("\n"):
+        had_placeholder = bool(_PLACEHOLDER_RE.search(ln))
+        cleaned = _PLACEHOLDER_RE.sub("", ln).rstrip()
+        if had_placeholder:
+            s = cleaned.strip()
+            # Now empty, or a dangling greeting label that needed the name.
+            if not s or re.fullmatch(r"(?i)(dear|hi|hello|hey|to)\s*[,:]?", s):
+                continue
+        lines.append(cleaned)
+    # Collapse 3+ blank lines (left by removals) to a single blank line.
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
+def generate_text(instruction: str, url: str, model: str, style: str = "") -> str:
+    """Draft fresh content from a spoken instruction (Command Mode, no selection)."""
+    if not (instruction and instruction.strip()):
+        return ""
+    sys = GENERATE_SYSTEM
+    if style:
+        sys += f"\n\nWrite it to sound {style}."
+    messages = [
+        {"role": "system", "content": sys},
+        {"role": "user", "content": f"Write this for me: {instruction}"},
+    ]
+    resp = requests.post(
+        f"{url.rstrip('/')}/api/chat",
+        json={"model": model, "messages": messages, "stream": False,
+              "options": {"temperature": 0.5}, "keep_alive": "1h"},
+        timeout=120,
+    )
+    resp.raise_for_status()
+    out = resp.json()["message"]["content"].strip()
+    if len(out) >= 2 and out[0] == out[-1] and out[0] in "\"'":
+        out = out[1:-1].strip()
+    return _clean_draft(out)
+
+
 _FILLER_WORDS = {
     "um", "uh", "er", "ah", "hmm", "mm", "mhm", "umm", "uhh", "erm", "huh", "uhm",
 }
@@ -2086,6 +2151,7 @@ class FlowApp(rumps.App):
         self._command_t = 0.0
         self._command_selection = None
         self._command_prev_clip = None
+        self._command_app = ("", "", "")
         self._combo_hks = []
         self._capturing = False  # True while recording a new shortcut
         # Main listener: single-key taps + context/auto-space detection. Always on.
@@ -2327,17 +2393,14 @@ class FlowApp(rumps.App):
             # busy with a dictation → ignore
 
     def _begin_command(self) -> None:
+        # Capture the app first so a generated draft can match its tone
+        # (email in Gmail, casual in Slack…).
+        self._command_app = frontmost_app()
         selection, prev = copy_selection()
-        if not selection:
-            play(SOUND_ERROR)
-            self.set_state(IDLE, "Idle")
-            rumps.notification(
-                "Voice-To-Text", "Command Mode",
-                "Select some text first, then tap the command key and speak an edit.",
-            )
-            return
-        self._command_selection = selection
-        self._command_prev_clip = prev
+        # Selection → edit it. No selection → generate fresh content from the
+        # spoken instruction and type it at the cursor.
+        self._command_selection = selection            # None ⇒ generate mode
+        self._command_prev_clip = prev if selection else clipboard_get()
         try:
             self.recorder.start()
         except Exception as e:
@@ -2348,18 +2411,23 @@ class FlowApp(rumps.App):
         if self.cfg["sounds"]["enabled"]:
             play(SOUND_START)
         AppHelper.callAfter(self.hud.show)
-        self.set_state(COMMAND, "Command… (say an edit, tap again)")
-        log(f"✏️ command mode — selection {len(selection)} chars")
+        if selection:
+            self.set_state(COMMAND, "Command… (say an edit, tap again)")
+            log(f"✏️ command mode — selection {len(selection)} chars")
+        else:
+            self.set_state(COMMAND, "Write… (say what to draft, tap again)")
+            log("✍️ write mode — no selection, will generate")
 
     def _end_command_and_process(self) -> None:
         audio = self.recorder.stop()
         AppHelper.callAfter(self.hud.hide)
         if self.cfg["sounds"]["enabled"]:
             play(SOUND_STOP)
-        self.set_state(PROCESSING, "Editing…")
+        self.set_state(PROCESSING, "Writing…" if self._command_selection is None else "Editing…")
         threading.Thread(target=self._process_command, args=(audio,), daemon=True).start()
 
     def _process_command(self, audio: np.ndarray) -> None:
+        generating = self._command_selection is None
         try:
             if not contains_speech(audio):
                 self.set_state(IDLE, "Heard nothing")
@@ -2375,17 +2443,32 @@ class FlowApp(rumps.App):
             if not has_lexical_content(instruction):
                 self.set_state(IDLE, "Heard nothing")
                 return
-            self.status_item.title = "Editing…"
-            result = apply_command(
-                instruction,
-                self._command_selection,
-                self.cfg["formatting"]["ollama_url"],
-                self.cfg["formatting"]["model"],
-            )
-            log(f"  edited → {result!r}")
+            if generating:
+                self.status_item.title = "Writing…"
+                style = style_for_app(
+                    self.cfg.get("styles", {}), *getattr(self, "_command_app", ("", "", "")))
+                result = generate_text(
+                    instruction,
+                    self.cfg["formatting"]["ollama_url"],
+                    self.cfg["formatting"]["model"],
+                    style,
+                )
+                log(f"  drafted → {result!r}")
+            else:
+                self.status_item.title = "Editing…"
+                result = apply_command(
+                    instruction,
+                    self._command_selection,
+                    self.cfg["formatting"]["ollama_url"],
+                    self.cfg["formatting"]["model"],
+                )
+                log(f"  edited → {result!r}")
+            if not result:
+                self.set_state(IDLE, "Nothing to write" if generating else "No change")
+                return
             clipboard_set(result)
             time.sleep(0.05)
-            paste_into_focused_app()  # replaces the still-selected text
+            paste_into_focused_app()  # generate: types at cursor; edit: replaces selection
             prev = self._command_prev_clip
             if prev is not None and self.cfg["paste"].get("restore_clipboard", True):
                 def _restore() -> None:
@@ -2393,7 +2476,7 @@ class FlowApp(rumps.App):
                     clipboard_set(prev)
 
                 threading.Thread(target=_restore, daemon=True).start()
-            self.set_state(IDLE, "Edited ✓")
+            self.set_state(IDLE, "Written ✓" if generating else "Edited ✓")
         except Exception as e:
             play(SOUND_ERROR)
             self.set_state(IDLE, "Error")
