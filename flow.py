@@ -140,6 +140,86 @@ KEY_LABELS = {
     "ctrl_l": "Left Control",
 }
 
+_COMBO_SYMBOL = {"cmd": "⌘", "ctrl": "⌃", "alt": "⌥", "shift": "⇧"}
+
+_MOD_TOKEN = {
+    keyboard.Key.cmd: "<cmd>", keyboard.Key.cmd_l: "<cmd>", keyboard.Key.cmd_r: "<cmd>",
+    keyboard.Key.ctrl: "<ctrl>", keyboard.Key.ctrl_l: "<ctrl>", keyboard.Key.ctrl_r: "<ctrl>",
+    keyboard.Key.alt: "<alt>", keyboard.Key.alt_l: "<alt>", keyboard.Key.alt_r: "<alt>",
+    keyboard.Key.shift: "<shift>", keyboard.Key.shift_l: "<shift>", keyboard.Key.shift_r: "<shift>",
+}
+_BARE_MOD_NAME = {
+    keyboard.Key.alt_l: "alt_l", keyboard.Key.alt_r: "alt_r",
+    keyboard.Key.cmd_l: "cmd_l", keyboard.Key.cmd_r: "cmd_r",
+    keyboard.Key.ctrl_l: "ctrl_l", keyboard.Key.ctrl_r: "ctrl_r",
+    keyboard.Key.shift_l: "shift_l", keyboard.Key.shift_r: "shift_r",
+}
+
+
+def hotkey_label(spec: str) -> str:
+    """Human-readable label for a hotkey spec ('alt_r' → 'Right Option',
+    '<ctrl>+<alt>+d' → '⌃⌥D')."""
+    if not spec:
+        return "Off"
+    if "+" in spec or spec.startswith("<"):
+        out = ""
+        for p in spec.replace("<", "").replace(">", "").split("+"):
+            out += _COMBO_SYMBOL.get(p, p.upper())
+        return out
+    return KEY_LABELS.get(spec, spec.upper())
+
+
+class HotkeyRecorder:
+    """Capture the next tapped key or chord. Calls callback(spec, label) on the
+    main thread — spec is None if cancelled (Esc). 'alt_r' for a bare modifier
+    tap; '<alt>+c' for a chord; 'f9'/'a' for a single non-modifier key."""
+
+    def __init__(self, callback):
+        self._cb = callback
+        self._held = []       # modifier tokens, in press order
+        self._held_keys = []  # modifier Key objects
+        self._done = False
+        self._listener = keyboard.Listener(on_press=self._press, on_release=self._release)
+        self._listener.daemon = True
+        self._listener.start()
+
+    def _finish(self, spec):
+        if self._done:
+            return
+        self._done = True
+        try:
+            self._listener.stop()
+        except Exception:
+            pass
+        AppHelper.callAfter(self._cb, spec, hotkey_label(spec) if spec else None)
+
+    def _press(self, key):
+        if key == keyboard.Key.esc:
+            self._finish(None)
+            return
+        if key in _MOD_TOKEN:
+            tok = _MOD_TOKEN[key]
+            if tok not in self._held:
+                self._held.append(tok)
+                self._held_keys.append(key)
+            return
+        # non-modifier key
+        if self._held:
+            ch = getattr(key, "char", None)
+            tok = ch.lower() if ch else (f"<{key.name}>" if getattr(key, "name", None) else None)
+            if tok:
+                self._finish("+".join(self._held + [tok]))
+        else:
+            name = getattr(key, "name", None)
+            ch = getattr(key, "char", None)
+            single = name or (ch.lower() if ch else None)
+            if single:
+                self._finish(single)
+
+    def _release(self, key):
+        if not self._done and key in _BARE_MOD_NAME and self._held_keys == [key]:
+            self._finish(_BARE_MOD_NAME[key])  # a modifier tapped alone
+
 SAMPLE_RATE = 16_000
 
 # A trigger key (Right/Left Option) only fires if it's TAPPED — pressed and
@@ -523,6 +603,10 @@ class SettingsController(NSObject):
         self._popup = None
         self._warm_btn = None
         self._specs = []
+        self._dict_val = None
+        self._cmd_val = None
+        self._dict_btn = None
+        self._cmd_btn = None
         return self
 
     def _build(self) -> None:
@@ -532,12 +616,10 @@ class SettingsController(NSObject):
             | NSWindowStyleMaskMiniaturizable
         )
         win = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-            NSMakeRect(0, 0, 400, 246), style, NSBackingStoreBuffered, False
+            NSMakeRect(0, 0, 420, 384), style, NSBackingStoreBuffered, False
         )
         win.setTitle_("Voice To Text — Settings")
         win.setReleasedWhenClosed_(False)
-        # Normal level + auto-hide when you switch apps, so it never floats on
-        # top of or gets in the way of whatever you're working in.
         win.setLevel_(0)
         win.setHidesOnDeactivate_(True)
         cv = win.contentView()
@@ -554,16 +636,16 @@ class SettingsController(NSObject):
             cv.addSubview_(f)
             return f
 
-        label("Microphone:", NSMakeRect(20, 198, 360, 18))
+        label("Microphone:", NSMakeRect(20, 344, 380, 18))
         popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
-            NSMakeRect(20, 166, 360, 28), False
+            NSMakeRect(20, 312, 380, 28), False
         )
         popup.setTarget_(self)
         popup.setAction_("micChanged:")
         cv.addSubview_(popup)
         self._popup = popup
 
-        warm = NSButton.alloc().initWithFrame_(NSMakeRect(20, 130, 360, 22))
+        warm = NSButton.alloc().initWithFrame_(NSMakeRect(20, 278, 380, 22))
         warm.setButtonType_(NSButtonTypeSwitch)
         warm.setTitle_("Keep mic warm (instant capture; orange mic dot stays on)")
         warm.setTarget_(self)
@@ -571,23 +653,65 @@ class SettingsController(NSObject):
         cv.addSubview_(warm)
         self._warm_btn = warm
 
-        hist = NSButton.alloc().initWithFrame_(NSMakeRect(20, 86, 200, 30))
+        def shortcut_row(y, title, action):
+            label(title, NSMakeRect(20, y + 4, 130, 18))
+            val = label("", NSMakeRect(150, y + 4, 110, 18))
+            val.setFont_(NSFont.boldSystemFontOfSize_(13))
+            btn = NSButton.alloc().initWithFrame_(NSMakeRect(270, y, 130, 28))
+            btn.setTitle_("Change…")
+            btn.setBezelStyle_(1)
+            btn.setTarget_(self)
+            btn.setAction_(action)
+            cv.addSubview_(btn)
+            return val, btn
+
+        self._dict_val, self._dict_btn = shortcut_row(236, "Dictation key:", "changeDictation:")
+        self._cmd_val, self._cmd_btn = shortcut_row(200, "Command key:", "changeCommand:")
+
+        hist = NSButton.alloc().initWithFrame_(NSMakeRect(20, 150, 200, 30))
         hist.setTitle_("Dictation History…")
-        hist.setBezelStyle_(1)  # rounded
+        hist.setBezelStyle_(1)
         hist.setTarget_(self)
         hist.setAction_("openHistory:")
         cv.addSubview_(hist)
 
         label(
-            "Switching to a Bluetooth mic drops it to call-quality while warm.\n"
-            "Open this window anytime with ⌃⌥⌘M.",
-            NSMakeRect(20, 18, 360, 44),
+            "Change: tap a key or press a combo. A combo like ⌥C can also type a\n"
+            "character — bare keys or ⌃-combos are cleanest. Open Settings: ⌃⌥⌘M.",
+            NSMakeRect(20, 16, 384, 40),
             secondary=True,
         )
         self._window = win
 
     def openHistory_(self, sender):  # noqa: N802
         self._app.open_history()
+
+    def changeDictation_(self, sender):  # noqa: N802
+        self._record("key", self._dict_btn, self._dict_val)
+
+    def changeCommand_(self, sender):  # noqa: N802
+        self._record("command_key", self._cmd_btn, self._cmd_val)
+
+    @objc.python_method
+    def _record(self, action, btn, val):
+        btn.setEnabled_(False)
+        btn.setTitle_("Press keys… (Esc)")
+        val.setStringValue_("…")
+
+        def done(spec, lbl):
+            btn.setEnabled_(True)
+            btn.setTitle_("Change…")
+            self._refresh_shortcuts()
+
+        self._app.record_hotkey(action, done)
+
+    @objc.python_method
+    def _refresh_shortcuts(self):
+        hk = self._app.cfg.get("hotkey", {})
+        if self._dict_val is not None:
+            self._dict_val.setStringValue_(hotkey_label(hk.get("key", "alt_r")))
+        if self._cmd_val is not None:
+            self._cmd_val.setStringValue_(hotkey_label(hk.get("command_key", "")))
 
     def _refresh(self) -> None:
         self._popup.removeAllItems()
@@ -607,6 +731,7 @@ class SettingsController(NSObject):
         self._warm_btn.setState_(
             1 if self._app.cfg["audio"].get("warm_mic", True) else 0
         )
+        self._refresh_shortcuts()
 
     def show(self) -> None:
         if self._window is None:
@@ -744,7 +869,7 @@ class HistoryController(NSObject):
 # ── Onboarding ───────────────────────────────────────────────────────────────
 
 OB_W, OB_H = 580.0, 480.0
-OB_STEPS = ["welcome", "permissions", "calibrate_normal", "calibrate_excited", "download", "done"]
+OB_STEPS = ["welcome", "permissions", "shortcut", "calibrate_normal", "calibrate_excited", "download", "done"]
 CALIB_SENTENCE = "“The quick brown fox jumps over the lazy dog.”"
 
 
@@ -765,6 +890,7 @@ class OnboardingController(NSObject):
         self._progress = None
         self._dl_status = None
         self._dl_btn = None
+        self._ob_dict_val = None
         return self
 
     # ── infra ──
@@ -909,6 +1035,38 @@ class OnboardingController(NSObject):
             NSMakeRect(40, 70, OB_W - 80, 40),
             secondary=True,
         )
+
+    @objc.python_method
+    def _step_shortcut(self, cv):
+        self._label(cv, "Pick your dictation key", NSMakeRect(40, OB_H - 70, OB_W - 80, 30), size=20, bold=True)
+        self._label(
+            cv,
+            "How do you want to start dictation? Tap a single key (Right Option is "
+            "the default) or press a key combo like ⌃⌥D. Press “Change”, then press "
+            "the key or combo you want.\n\nTip: a combo like ⌥C may also type a "
+            "character — a bare key or a ⌃-combo is cleanest.",
+            NSMakeRect(40, OB_H - 178, OB_W - 80, 100),
+        )
+        cur = self._app.cfg.get("hotkey", {}).get("key", "alt_r")
+        self._label(cv, "Current:", NSMakeRect(40, OB_H - 224, 80, 20))
+        self._ob_dict_val = self._label(cv, hotkey_label(cur), NSMakeRect(120, OB_H - 224, 150, 22), size=15, bold=True)
+        self._button(cv, "Change…", NSMakeRect(290, OB_H - 228, 130, 30), "changeShortcut:")
+
+    def changeShortcut_(self, sender):  # noqa: N802
+        sender.setEnabled_(False)
+        sender.setTitle_("Press keys… (Esc)")
+        if self._ob_dict_val is not None:
+            self._ob_dict_val.setStringValue_("…")
+
+        def done(spec, lbl):
+            sender.setEnabled_(True)
+            sender.setTitle_("Change…")
+            if self._ob_dict_val is not None:
+                self._ob_dict_val.setStringValue_(
+                    hotkey_label(self._app.cfg.get("hotkey", {}).get("key", "alt_r"))
+                )
+
+        self._app.record_hotkey("key", done)
 
     @objc.python_method
     def _calib_step(self, cv, title, instruction, action):
@@ -1865,8 +2023,8 @@ class FlowApp(rumps.App):
         except Exception as e:
             log(f"  (AXIsProcessTrusted warm failed: {e})")
 
-        self._trigger = self._resolve_trigger(self.cfg["hotkey"]["key"], keyboard.Key.alt_r)
-        self._command_trigger = self._resolve_trigger(self.cfg["hotkey"].get("command_key", ""))
+        self._trigger = None
+        self._command_trigger = None
         self._trigger_down = False
         self._trigger_modified = False  # another key pressed while held → modifier use
         self._trigger_t = 0.0
@@ -1875,23 +2033,83 @@ class FlowApp(rumps.App):
         self._command_t = 0.0
         self._command_selection = None
         self._command_prev_clip = None
+        self._combo_hks = []
+        self._capturing = False  # True while recording a new shortcut
+        # Main listener: single-key taps + context/auto-space detection. Always on.
         self._listener = keyboard.Listener(
             on_press=self._on_press, on_release=self._on_release
         )
         self._listener.daemon = True
         self._listener.start()
-
-        combo = self.cfg["hotkey"].get("settings_combo", "")
-        if combo:
-            self._settings_hk = keyboard.GlobalHotKeys({combo: self.open_settings})
-            self._settings_hk.daemon = True
-            self._settings_hk.start()
-
         # Watch for clicks so we know when you've moved to a new spot, and
         # shouldn't auto-prepend a space to the next dictation.
         self._mouse_listener = mouse.Listener(on_click=self._on_click)
         self._mouse_listener.daemon = True
         self._mouse_listener.start()
+        self._apply_hotkeys()
+
+    def _apply_hotkeys(self) -> None:
+        """(Re)wire triggers from config — single bare keys use tap-detection;
+        combos (containing '+') use chord hotkeys. Hot-swappable, no restart."""
+        for hk in getattr(self, "_combo_hks", []):
+            try:
+                hk.stop()
+            except Exception:
+                pass
+        self._combo_hks = []
+
+        def register(spec, cb):
+            try:
+                hk = keyboard.GlobalHotKeys({spec: cb})
+                hk.daemon = True
+                hk.start()
+                self._combo_hks.append(hk)
+            except Exception as e:
+                log(f"  invalid hotkey {spec!r}: {e}")
+
+        dk = self.cfg["hotkey"].get("key", "alt_r")
+        if "+" in dk:
+            self._trigger = None
+            register(dk, lambda: None if self._capturing else self.toggle())
+        else:
+            self._trigger = self._resolve_trigger(dk, keyboard.Key.alt_r)
+
+        ck = self.cfg["hotkey"].get("command_key", "")
+        if ck and "+" in ck:
+            self._command_trigger = None
+            register(ck, lambda: None if self._capturing else self.command_toggle())
+        else:
+            self._command_trigger = self._resolve_trigger(ck) if ck else None
+
+        sk = self.cfg["hotkey"].get("settings_combo", "")
+        if sk:
+            register(sk, self.open_settings)
+        log(f"  hotkeys: dictate={dk!r} command={ck!r}")
+
+    def set_hotkey(self, action: str, spec: str) -> None:
+        """Change a hotkey ('key' or 'command_key') live and persist it."""
+        if not spec:
+            return
+        self.cfg["hotkey"][action] = spec
+        self._persist(action, spec)
+        self._apply_hotkeys()
+        log(f"hotkey {action} → {spec!r}")
+
+    def record_hotkey(self, action: str, ui_callback) -> None:
+        """Start capturing the next key/chord for `action`; applies it live and
+        calls ui_callback(spec, label) (spec None if cancelled)."""
+        self._capturing = True
+
+        def done(spec, label):
+            self._capturing = False
+            if spec:
+                self.set_hotkey(action, spec)
+            try:
+                ui_callback(spec, label)
+            except Exception as e:
+                log(f"  hotkey ui callback error: {e}")
+
+        self._recorder = HotkeyRecorder(done)
 
     def _on_click(self, x, y, button, pressed) -> None:  # noqa: ANN001
         if pressed:
@@ -1928,13 +2146,13 @@ class FlowApp(rumps.App):
             tapped = (self._trigger_down and not self._trigger_modified
                       and now - self._trigger_t <= TAP_MAX_SECONDS)
             self._trigger_down = False
-            if tapped:
+            if tapped and not self._capturing:
                 self.toggle()
         elif self._command_trigger is not None and key == self._command_trigger:
             tapped = (self._command_down and not self._command_modified
                       and now - self._command_t <= TAP_MAX_SECONDS)
             self._command_down = False
-            if tapped:
+            if tapped and not self._capturing:
                 self.command_toggle()
 
     def toggle_formatting(self, sender: rumps.MenuItem) -> None:
