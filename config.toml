@@ -66,6 +66,19 @@ space_between_seconds = 90
 # Subtle audio cues when recording starts / stops (like Wispr Flow).
 enabled = true
 
+[styles]
+# Per-app tone. When the app you're dictating into matches a key (app name or
+# bundle-id substring, case-insensitive), the formatter adapts your dictation to
+# that tone. NOTE: a style rephrases for tone, so it's LESS verbatim — that's the
+# point. Apps you don't list stay fully verbatim. Uncomment to enable per app.
+enabled = true
+# "Slack" = "casual and friendly, like a quick chat message"
+# "Discord" = "casual and friendly"
+# "Messages" = "casual and warm, like texting a friend"
+# "Mail" = "professional, polished, and courteous"
+# "Notion" = "clear, structured, and concise"
+# "Gmail" = "professional and friendly"
+
 [replacements]
 # OFF by default, so your dictation stays faithful to exactly what you say.
 # Optional: if some distinctive term keeps getting mis-heard, add your own here

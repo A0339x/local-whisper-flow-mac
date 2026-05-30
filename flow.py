@@ -59,6 +59,7 @@ from AppKit import (
     NSTableColumn,
     NSFont,
     NSProgressIndicator,
+    NSWorkspace,
 )
 from Foundation import NSObject
 from PyObjCTools import AppHelper
@@ -1425,7 +1426,32 @@ def has_lexical_content(text: str) -> bool:
     return any(w not in _FILLER_WORDS for w in words)
 
 
-def format_text(text: str, url: str, model: str, tone: str | None = None) -> str:
+def frontmost_app() -> tuple[str, str]:
+    """(localized name, bundle id) of the app you're currently in."""
+    try:
+        app = NSWorkspace.sharedWorkspace().frontmostApplication()
+        if app is not None:
+            return (app.localizedName() or "", app.bundleIdentifier() or "")
+    except Exception:
+        pass
+    return ("", "")
+
+
+def style_for_app(styles_cfg: dict, name: str, bundle: str) -> str:
+    """Return the tone instruction configured for the current app, or ''."""
+    if not styles_cfg or not styles_cfg.get("enabled", False):
+        return ""
+    name_l, bundle_l = name.lower(), bundle.lower()
+    for key, val in styles_cfg.items():
+        if key == "enabled" or not isinstance(val, str):
+            continue
+        k = key.lower()
+        if k and (k in name_l or k in bundle_l):
+            return val
+    return ""
+
+
+def format_text(text: str, url: str, model: str, tone: str | None = None, style: str = "") -> str:
     if not has_lexical_content(text):
         return ""
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -1433,6 +1459,12 @@ def format_text(text: str, url: str, model: str, tone: str | None = None) -> str
         messages.append({"role": "user", "content": _INSTRUCTION + raw})
         messages.append({"role": "assistant", "content": clean})
     user_content = _INSTRUCTION + text
+    if style:
+        user_content = (
+            f"[Style: adapt this to a {style} tone. For THIS one you MAY lightly "
+            "rephrase for tone — but keep the meaning and every fact, name, and "
+            "number. Still no preamble or commentary.]\n\n"
+        ) + user_content
     if tone == "excited":
         user_content = (
             "[Voice tone: the speaker sounded a bit energetic. You MAY end ONE "
@@ -1811,11 +1843,12 @@ class FlowApp(rumps.App):
             play(SOUND_ERROR)
             rumps.notification("Voice-To-Text", "Could not start recording", str(e))
             return
+        self._target_app = frontmost_app()  # where the text will land
         if self.cfg["sounds"]["enabled"]:
             play(SOUND_START)
         AppHelper.callAfter(self.hud.show)
         self.set_state(RECORDING, "Recording… (tap hotkey or ✓ to stop)")
-        log("● recording started")
+        log(f"● recording started (app: {self._target_app[0] or '?'})")
 
     def _end_recording_and_process(self) -> None:
         audio = self.recorder.stop()
@@ -1988,6 +2021,9 @@ class FlowApp(rumps.App):
                 self.set_state(IDLE, "Heard nothing")
                 return
             tone = self._assess_tone(audio) if tone_cfg.get("detect_excitement", False) else None
+            style = style_for_app(self.cfg.get("styles", {}), *getattr(self, "_target_app", ("", "")))
+            if style:
+                log(f"  style: {self._target_app[0]} → {style!r}")
             if self.cfg["formatting"]["enabled"]:
                 self.status_item.title = "Formatting…"
                 try:
@@ -1996,6 +2032,7 @@ class FlowApp(rumps.App):
                         self.cfg["formatting"]["ollama_url"],
                         self.cfg["formatting"]["model"],
                         tone=tone,
+                        style=style,
                     )
                     log(f"  formatted : {text!r}")
                 except Exception as e:
