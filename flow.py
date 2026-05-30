@@ -2654,8 +2654,19 @@ class FlowApp(rumps.App):
         else:
             self.set_state(COMMAND, "Write… (say what to draft, tap again)")
             log("✍️ write mode — no selection, will generate")
+        # Stream the spoken instruction the same way dictation does, so a longer
+        # instruction is mostly transcribed by the time you tap to stop.
+        self._streaming = bool(self.cfg["transcription"].get("streaming", True))
+        self._stream_committed = ""
+        self._stream_commit_n = 0
+        self._stream_thread = None
+        if self._streaming:
+            self._streaming_active = True
+            self._stream_thread = threading.Thread(target=self._stream_worker, daemon=True)
+            self._stream_thread.start()
 
     def _end_command_and_process(self) -> None:
+        self._streaming_active = False  # stop the streaming worker
         audio = self.recorder.stop()
         AppHelper.callAfter(self.hud.hide)
         if self.cfg["sounds"]["enabled"]:
@@ -2669,13 +2680,22 @@ class FlowApp(rumps.App):
             if not contains_speech(audio):
                 self.set_state(IDLE, "Heard nothing")
                 return
-            res = transcribe(
-                audio,
-                self.cfg["transcription"]["model"],
-                self.cfg["transcription"]["language"],
-                self.cfg["transcription"].get("vocabulary", ""),
-            )
-            instruction = (res.get("text") or "").strip()
+            tcfg = self.cfg["transcription"]
+            model, lang, gloss = tcfg["model"], tcfg["language"], tcfg.get("vocabulary", "")
+            if getattr(self, "_streaming", False):
+                # Most of a longer instruction was transcribed while you talked;
+                # finalize just the tail since the last committed pause.
+                th = getattr(self, "_stream_thread", None)
+                if th is not None:
+                    th.join(timeout=4.0)
+                commit_n = getattr(self, "_stream_commit_n", 0)
+                tail = audio[commit_n:]
+                tail_text = ""
+                if tail.size >= int(0.25 * SAMPLE_RATE) and contains_speech(tail):
+                    tail_text = (transcribe(tail, model, lang, gloss).get("text") or "").strip()
+                instruction = (getattr(self, "_stream_committed", "") + " " + tail_text).strip()
+            else:
+                instruction = (transcribe(audio, model, lang, gloss).get("text") or "").strip()
             log(f"  command: {instruction!r}")
             if not has_lexical_content(instruction) or is_hallucination(instruction, strict=True):
                 self.set_state(IDLE, "Heard nothing")
