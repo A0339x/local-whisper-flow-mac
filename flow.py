@@ -60,6 +60,7 @@ from AppKit import (
     NSFont,
     NSProgressIndicator,
     NSWorkspace,
+    NSSound,
 )
 from Foundation import NSObject
 from PyObjCTools import AppHelper
@@ -151,12 +152,41 @@ def log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
+_SOUND_CACHE: dict = {}
+
+
+def preload_sounds() -> None:
+    """Load cue sounds into memory at startup so the first cue is instant."""
+    for path in (SOUND_START, SOUND_STOP, SOUND_CANCEL, SOUND_ERROR):
+        try:
+            snd = NSSound.alloc().initWithContentsOfFile_byReference_(path, True)
+            if snd is not None:
+                _SOUND_CACHE[path] = snd
+        except Exception:
+            pass
+
+
 def play(sound_path: str) -> None:
+    """Play a cue from the preloaded NSSound (no subprocess spawn → instant).
+    Falls back to afplay if NSSound is unavailable."""
+    snd = _SOUND_CACHE.get(sound_path)
+    if snd is None:
+        try:
+            snd = NSSound.alloc().initWithContentsOfFile_byReference_(sound_path, True)
+            if snd is not None:
+                _SOUND_CACHE[sound_path] = snd
+        except Exception:
+            snd = None
+    if snd is not None:
+        try:
+            snd.stop()  # rewind if it's still playing from a rapid retrigger
+            if snd.play():
+                return
+        except Exception:
+            pass
     try:
         subprocess.Popen(
-            ["afplay", sound_path],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            ["afplay", sound_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
     except Exception:
         pass
@@ -1634,6 +1664,7 @@ def deliver_text(text: str, cfg: dict) -> None:
 class FlowApp(rumps.App):
     def __init__(self, cfg: dict) -> None:
         super().__init__(GLYPH[IDLE], quit_button=None)
+        preload_sounds()  # cue sounds in memory → instant playback
         self.cfg = cfg
         self.state = IDLE
         audio_cfg = cfg.get("audio", {})
