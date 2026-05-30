@@ -1157,27 +1157,37 @@ class OnboardingController(NSObject):
 # ── Transcription (Whisper via MLX) ──────────────────────────────────────────
 
 def contains_speech(audio: np.ndarray, sr: int = SAMPLE_RATE) -> bool:
-    """True if the clip has real speech (not silence/room-tone), so we can skip
-    Whisper on empty recordings — it hallucinates ("Thanks for watching!") on
-    silence. Uses an absolute peak floor + mic-gain-independent dynamic range."""
+    """True if the clip has real speech (not silence/room-tone/coughs/bangs), so
+    we can skip Whisper on empty recordings — it hallucinates ("Thanks for
+    watching!") otherwise. Combines an absolute peak floor, a mic-gain-
+    independent dynamic-range check, and a VOICING check (pitch periodicity) that
+    a cough/clap/door-slam/noise-burst lacks but speech always has."""
     if audio is None or audio.size < int(0.15 * sr):
         return False
-    peak = float(np.max(np.abs(audio)))
-    if peak < 0.04:  # essentially silent
+    if float(np.max(np.abs(audio))) < 0.04:  # essentially silent
         return False
-    frame, hop = int(0.025 * sr), int(0.010 * sr)
-    e = np.array(
-        [float(np.sqrt(np.mean(audio[i : i + frame] ** 2) + 1e-12))
-         for i in range(0, audio.size - frame, hop)]
-    )
-    if e.size < 5:
+    frame, hop = int(0.030 * sr), int(0.010 * sr)
+    lag_min, lag_max = int(sr / 400), int(sr / 80)  # 80–400 Hz pitch range
+    energies, voiced = [], 0
+    for i in range(0, audio.size - frame, hop):
+        fr = audio[i : i + frame]
+        e = float(np.sqrt(np.mean(fr * fr) + 1e-12))
+        energies.append(e)
+        if e > 0.02:  # only test loud frames for periodicity (pitch)
+            x = fr - np.mean(fr)
+            ac = np.correlate(x, x, "full")[frame - 1 :]
+            if ac.size > lag_max and ac[0] > 0:
+                seg = ac[lag_min:lag_max]
+                if seg.size and seg.max() > 0.4 * ac[0]:
+                    voiced += 1
+    if len(energies) < 5:
         return False
+    e = np.asarray(energies)
     floor = float(np.percentile(e, 20))
-    loud = float(np.percentile(e, 95))
-    dynamic = loud / (floor + 1e-6)
-    # Speech: loud parts well above the quiet floor, with enough loud frames.
-    loud_frac = float(np.mean(e > max(0.02, floor * 3)))
-    return dynamic >= 4.0 and loud_frac >= 0.03
+    dynamic = float(np.percentile(e, 95)) / (floor + 1e-6)
+    # Voicing (pitch periodicity) rejects coughs/claps/noise bursts; the dynamic
+    # range rejects steady tones (~1.0); the peak floor (above) rejects silence.
+    return voiced >= 5 and dynamic >= 2.0
 
 
 def transcribe(audio: np.ndarray, model: str, language: str, vocabulary: str = "") -> dict:

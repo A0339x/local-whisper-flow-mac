@@ -218,6 +218,35 @@ ok("hiss rejected", not flow.contains_speech((_rng.standard_normal(int(2 * _sr))
 ok("real speech accepted", flow.contains_speech(say_arr("this is real speech for the gate")))
 ok("short 'okay' accepted", flow.contains_speech(say_arr("okay")))
 
+# ── 9. NON-SPEECH TRANSIENTS + FORMATTING EDGE CASES ─────────────────────────
+print("\n" + "=" * 72)
+print("9. NON-SPEECH TRANSIENTS + FORMATTING EDGE CASES")
+print("=" * 72)
+_r = np.random.default_rng(7)
+_s = flow.SAMPLE_RATE
+_clap = np.zeros(int(2 * _s), dtype="float32")
+_cb = (_r.standard_normal(int(0.04 * _s)) * 0.6).astype("float32")
+_clap[int(_s):int(_s) + _cb.size] = _cb
+ok("clap impulse rejected", not flow.contains_speech(_clap))
+_cough = np.zeros(int(2 * _s), dtype="float32")
+_cgb = (_r.standard_normal(int(0.3 * _s)) * 0.4).astype("float32")
+_cough[int(0.8 * _s):int(0.8 * _s) + _cgb.size] = _cgb
+ok("cough rejected (no voicing)", not flow.contains_speech(_cough))
+_tt = np.arange(int(2 * _s)) / _s
+ok("steady musical tone rejected", not flow.contains_speech((0.3 * np.sin(2 * np.pi * 220 * _tt)).astype("float32")))
+ok("ultra-short 'no' accepted", flow.contains_speech(say_arr("no")))
+_pad = np.concatenate([say_arr("here is my actual message"), np.zeros(int(2 * _s), dtype="float32")]).astype("float32")
+_rawp = (flow.transcribe(_pad, WHISPER, "en", VOCAB).get("text") or "").strip()
+ok("trailing silence no hallucination", "actual message" in _rawp.lower() and "watching" not in _rawp.lower(), f"-> {_rawp!r}")
+_oe = fmt("send the file to john dot doe at gmail dot com")
+ok("dictated email formatted", ("@" in _oe) or ("gmail" in _oe.lower()), f"-> {_oe!r}")
+_o9 = fmt("remind me to call the dentist tomorrow morning")
+ok("imperative cleaned not obeyed", "dentist" in _o9.lower() and _o9.strip().endswith("."), f"-> {_o9!r}")
+_o10 = fmt("i need three things first the slides no wait the report second the budget can you send them by friday")
+ok("combined correction+list+question", ("report" in _o10.lower()) and ("slides" not in _o10.lower()) and ("?" in _o10), f"-> {_o10!r}")
+_o8 = fmt("the total came out to twelve hundred and fifty dollars and ninety nine cents")
+ok("currency rendered", ("250" in _o8) or ("twelve hundred" in _o8.lower()), f"-> {_o8!r}")
+
 # ── SUMMARY ──────────────────────────────────────────────────────────────────
 print("\n" + "=" * 72)
 print(f"RESULTS:  {len(PASS)} passed, {len(FAIL)} failed")
