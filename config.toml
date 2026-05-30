@@ -9,6 +9,11 @@
 key = "alt_r"
 # Key combo (pynput format) that opens the Settings window. Set "" to disable.
 settings_combo = "<ctrl>+<alt>+<cmd>+m"
+# Command Mode: select text in any app, tap this key, speak an edit ("make this
+# friendlier", "turn into bullet points", "fix the grammar", "translate to
+# Spanish"), tap again — the AI rewrites your selection in place. Left Option by
+# default. Set "" to disable.
+command_key = "alt_l"
 
 [audio]
 # Keep the mic stream open continuously for instant, zero-loss capture.

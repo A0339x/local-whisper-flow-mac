@@ -120,8 +120,9 @@ def history_clear() -> None:
 IDLE = "idle"
 RECORDING = "recording"
 PROCESSING = "processing"
+COMMAND = "command"
 
-GLYPH = {IDLE: "🎤", RECORDING: "🔴", PROCESSING: "⏳"}
+GLYPH = {IDLE: "🎤", RECORDING: "🔴", PROCESSING: "⏳", COMMAND: "✏️"}
 
 KEY_LABELS = {
     "alt_r": "Right Option",
@@ -1384,6 +1385,35 @@ _INSTRUCTION = (
 )
 
 
+COMMAND_SYSTEM = """You are a precise in-place text editor. The user selected some \
+text in an app and spoke an instruction. Apply the instruction to the selected \
+text and output ONLY the edited text that should replace the selection — no \
+preamble, no quotes, no commentary, no explanation. Preserve the original meaning \
+unless the instruction says to change it. If the instruction is a transformation \
+(rewrite, shorten, expand, reformat, translate, fix grammar, change tone, make a \
+list…), do exactly that. If it's unclear, make the smallest reasonable edit."""
+
+
+def apply_command(instruction: str, selected: str, url: str, model: str) -> str:
+    """Apply a spoken instruction to selected text (Command Mode)."""
+    if not (selected and selected.strip()):
+        return selected
+    messages = [
+        {"role": "system", "content": COMMAND_SYSTEM},
+        {"role": "user", "content": f"Instruction: {instruction}\n\nSelected text:\n{selected}"},
+    ]
+    resp = requests.post(
+        f"{url.rstrip('/')}/api/chat",
+        json={"model": model, "messages": messages, "stream": False, "options": {"temperature": 0.3}},
+        timeout=120,
+    )
+    resp.raise_for_status()
+    out = resp.json()["message"]["content"].strip()
+    if len(out) >= 2 and out[0] == out[-1] and out[0] in "\"'":
+        out = out[1:-1].strip()
+    return out or selected
+
+
 _FILLER_WORDS = {
     "um", "uh", "er", "ah", "hmm", "mm", "mhm", "umm", "uhh", "erm", "huh", "uhm",
 }
@@ -1452,6 +1482,29 @@ def paste_into_focused_app() -> None:
     _kbd.press("v")
     _kbd.release("v")
     _kbd.release(keyboard.Key.cmd)
+
+
+def copy_selection() -> tuple[str | None, str | None]:
+    """Copy the currently-selected text from the focused app via ⌘C.
+
+    Returns (selected_text, previous_clipboard). selected_text is None if nothing
+    was selected. Uses a sentinel so we can tell "nothing selected" from a real
+    copy, and the caller restores the previous clipboard afterward.
+    """
+    prev = clipboard_get()
+    sentinel = "__VTT_NO_SELECTION__"
+    clipboard_set(sentinel)
+    time.sleep(0.06)
+    _kbd.press(keyboard.Key.cmd)
+    _kbd.press("c")
+    _kbd.release("c")
+    _kbd.release(keyboard.Key.cmd)
+    time.sleep(0.18)  # give the app time to put the selection on the clipboard
+    sel = clipboard_get()
+    if sel == sentinel or not sel.strip():
+        clipboard_set(prev)  # nothing selected → restore now
+        return None, None
+    return sel, prev
 
 
 def deliver_text(text: str, cfg: dict) -> None:
@@ -1523,7 +1576,8 @@ class FlowApp(rumps.App):
             self.mic_menu,
             self.fmt_item,
             None,
-            rumps.MenuItem(f"Hotkey: {KEY_LABELS.get(cfg['hotkey']['key'], cfg['hotkey']['key'])}", callback=None),
+            rumps.MenuItem(f"Dictate: {KEY_LABELS.get(cfg['hotkey']['key'], cfg['hotkey']['key'])}", callback=None),
+            rumps.MenuItem(f"Command Mode: {KEY_LABELS.get(cfg['hotkey'].get('command_key', ''), cfg['hotkey'].get('command_key', '') or 'off')}", callback=None),
             rumps.MenuItem(
                 f"Whisper: {cfg['transcription']['model'].split('/')[-1]}",
                 callback=None,
@@ -1651,13 +1705,14 @@ class FlowApp(rumps.App):
         self.status_item.title = status or state.capitalize()
 
     # ── Hotkey ──
-    def _resolve_trigger(self):
-        name = self.cfg["hotkey"]["key"]
+    def _resolve_trigger(self, name, default=None):
+        if not name:
+            return None
         if hasattr(keyboard.Key, name):
             return getattr(keyboard.Key, name)
         if len(name) == 1:
             return keyboard.KeyCode.from_char(name)
-        return keyboard.Key.alt_r  # fallback: Right Option
+        return default
 
     def _start_hotkey_listener(self) -> None:
         # Pre-warm pyobjc's lazy lookup of AXIsProcessTrusted on the main thread.
@@ -1670,8 +1725,12 @@ class FlowApp(rumps.App):
         except Exception as e:
             log(f"  (AXIsProcessTrusted warm failed: {e})")
 
-        self._trigger = self._resolve_trigger()
+        self._trigger = self._resolve_trigger(self.cfg["hotkey"]["key"], keyboard.Key.alt_r)
+        self._command_trigger = self._resolve_trigger(self.cfg["hotkey"].get("command_key", ""))
         self._trigger_down = False  # debounce auto-repeat while held
+        self._command_down = False
+        self._command_selection = None
+        self._command_prev_clip = None
         self._listener = keyboard.Listener(
             on_press=self._on_press, on_release=self._on_release
         )
@@ -1699,6 +1758,10 @@ class FlowApp(rumps.App):
             if not self._trigger_down:
                 self._trigger_down = True
                 self.toggle()
+        elif self._command_trigger is not None and key == self._command_trigger:
+            if not self._command_down:
+                self._command_down = True
+                self.command_toggle()
         elif time.time() - self._paste_done_ts > 0.5:
             # A real keystroke (not our own synthetic Cmd+V right after a paste)
             # means you've typed/moved — don't auto-space the next dictation.
@@ -1707,6 +1770,8 @@ class FlowApp(rumps.App):
     def _on_release(self, key) -> None:  # noqa: ANN001
         if key == self._trigger:
             self._trigger_down = False
+        elif self._command_trigger is not None and key == self._command_trigger:
+            self._command_down = False
 
     def toggle_formatting(self, sender: rumps.MenuItem) -> None:
         sender.state = not sender.state
@@ -1760,6 +1825,89 @@ class FlowApp(rumps.App):
         self.set_state(PROCESSING, "Transcribing…")
         log(f"■ stopped — {audio.size / SAMPLE_RATE:.1f}s captured, transcribing…")
         threading.Thread(target=self._process, args=(audio,), daemon=True).start()
+
+    # ── Command Mode (select text → speak an edit → AI rewrites it) ──
+    def command_toggle(self) -> None:
+        with self._lock:
+            if self.state == IDLE:
+                self.state = COMMAND  # claim immediately; begin runs off-thread
+                threading.Thread(target=self._begin_command, daemon=True).start()
+            elif self.state == COMMAND:
+                self._end_command_and_process()
+            # busy with a dictation → ignore
+
+    def _begin_command(self) -> None:
+        selection, prev = copy_selection()
+        if not selection:
+            play(SOUND_ERROR)
+            self.set_state(IDLE, "Idle")
+            rumps.notification(
+                "Voice-To-Text", "Command Mode",
+                "Select some text first, then tap the command key and speak an edit.",
+            )
+            return
+        self._command_selection = selection
+        self._command_prev_clip = prev
+        try:
+            self.recorder.start()
+        except Exception as e:
+            play(SOUND_ERROR)
+            self.set_state(IDLE, "Idle")
+            rumps.notification("Voice-To-Text", "Could not start recording", str(e))
+            return
+        if self.cfg["sounds"]["enabled"]:
+            play(SOUND_START)
+        AppHelper.callAfter(self.hud.show)
+        self.set_state(COMMAND, "Command… (say an edit, tap again)")
+        log(f"✏️ command mode — selection {len(selection)} chars")
+
+    def _end_command_and_process(self) -> None:
+        audio = self.recorder.stop()
+        AppHelper.callAfter(self.hud.hide)
+        if self.cfg["sounds"]["enabled"]:
+            play(SOUND_STOP)
+        self.set_state(PROCESSING, "Editing…")
+        threading.Thread(target=self._process_command, args=(audio,), daemon=True).start()
+
+    def _process_command(self, audio: np.ndarray) -> None:
+        try:
+            if not contains_speech(audio):
+                self.set_state(IDLE, "Heard nothing")
+                return
+            res = transcribe(
+                audio,
+                self.cfg["transcription"]["model"],
+                self.cfg["transcription"]["language"],
+                self.cfg["transcription"].get("vocabulary", ""),
+            )
+            instruction = (res.get("text") or "").strip()
+            log(f"  command: {instruction!r}")
+            if not has_lexical_content(instruction):
+                self.set_state(IDLE, "Heard nothing")
+                return
+            self.status_item.title = "Editing…"
+            result = apply_command(
+                instruction,
+                self._command_selection,
+                self.cfg["formatting"]["ollama_url"],
+                self.cfg["formatting"]["model"],
+            )
+            log(f"  edited → {result!r}")
+            clipboard_set(result)
+            time.sleep(0.05)
+            paste_into_focused_app()  # replaces the still-selected text
+            prev = self._command_prev_clip
+            if prev is not None and self.cfg["paste"].get("restore_clipboard", True):
+                def _restore() -> None:
+                    time.sleep(0.6)
+                    clipboard_set(prev)
+
+                threading.Thread(target=_restore, daemon=True).start()
+            self.set_state(IDLE, "Edited ✓")
+        except Exception as e:
+            play(SOUND_ERROR)
+            self.set_state(IDLE, "Error")
+            rumps.notification("Voice-To-Text", "Command failed", str(e))
 
     def _maybe_prepend_space(self, text: str) -> str:
         """Add a leading space only when continuing in the same spot — i.e. a
