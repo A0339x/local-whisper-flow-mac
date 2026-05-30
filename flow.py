@@ -677,7 +677,15 @@ class SettingsController(NSObject):
         self._dict_val, self._dict_btn = shortcut_row(236, "Dictation key:", "changeDictation:")
         self._cmd_val, self._cmd_btn = shortcut_row(200, "Command key:", "changeCommand:")
 
-        hist = NSButton.alloc().initWithFrame_(NSMakeRect(20, 150, 200, 30))
+        fmt = NSButton.alloc().initWithFrame_(NSMakeRect(20, 162, 384, 22))
+        fmt.setButtonType_(NSButtonTypeSwitch)
+        fmt.setTitle_("Smart formatting — clean up dictation (off = faster, raw)")
+        fmt.setTarget_(self)
+        fmt.setAction_("formattingToggled:")
+        cv.addSubview_(fmt)
+        self._fmt_btn = fmt
+
+        hist = NSButton.alloc().initWithFrame_(NSMakeRect(20, 120, 200, 30))
         hist.setTitle_("Dictation History…")
         hist.setBezelStyle_(1)
         hist.setTarget_(self)
@@ -740,6 +748,9 @@ class SettingsController(NSObject):
         self._warm_btn.setState_(
             1 if self._app.cfg["audio"].get("warm_mic", True) else 0
         )
+        self._fmt_btn.setState_(
+            1 if self._app.cfg.get("formatting", {}).get("enabled", True) else 0
+        )
         self._refresh_shortcuts()
 
     def show(self) -> None:
@@ -768,6 +779,9 @@ class SettingsController(NSObject):
 
     def warmToggled_(self, sender):  # noqa: N802
         self._app.apply_warm(bool(sender.state()))
+
+    def formattingToggled_(self, sender):  # noqa: N802
+        self._app.apply_formatting(bool(sender.state()))
 
 
 class HistoryController(NSObject):
@@ -2314,21 +2328,46 @@ class FlowApp(rumps.App):
         self._persist("warm_mic", on)
         log(f"warm mic -> {on}")
 
-    def _persist(self, key: str, value) -> None:  # noqa: ANN001
+    def apply_formatting(self, on: bool) -> None:
+        # Picked up live by _process on the next dictation — no re-init needed.
+        self.cfg.setdefault("formatting", {})["enabled"] = on
+        self._persist("enabled", on, section="formatting")
+        log(f"smart formatting -> {on}")
+
+    @staticmethod
+    def _fmt_value(value) -> str:  # noqa: ANN001
         if isinstance(value, bool):
-            v = "true" if value else "false"
-        elif isinstance(value, str):
-            v = f'"{value}"'
-        else:
-            v = str(value)
+            return "true" if value else "false"
+        if isinstance(value, str):
+            return f'"{value}"'
+        return str(value)
+
+    def _persist(self, key: str, value, section: str | None = None) -> None:  # noqa: ANN001
+        v = self._fmt_value(value)
         try:
             text = CONFIG_PATH.read_text()
-            new = re.sub(
-                rf"^(\s*{re.escape(key)}\s*=).*$", rf"\1 {v}", text, count=1, flags=re.M
-            )
+            if section is None:
+                # Unique top-level key: replace the first match anywhere.
+                new = re.sub(rf"^(\s*{re.escape(key)}\s*=).*$", rf"\1 {v}",
+                             text, count=1, flags=re.M)
+            else:
+                # Key may repeat across sections (e.g. `enabled`); only replace it
+                # inside the [section] block.
+                lines = text.split("\n")
+                in_section = False
+                for i, ln in enumerate(lines):
+                    s = ln.strip()
+                    if s.startswith("[") and s.endswith("]"):
+                        in_section = s == f"[{section}]"
+                        continue
+                    if in_section and re.match(rf"\s*{re.escape(key)}\s*=", ln):
+                        lines[i] = re.sub(rf"^(\s*{re.escape(key)}\s*=).*$",
+                                          rf"\1 {v}", ln)
+                        break
+                new = "\n".join(lines)
             CONFIG_PATH.write_text(new)
         except Exception as e:
-            log(f"  could not persist {key}: {e}")
+            log(f"  could not persist {section + '.' if section else ''}{key}: {e}")
 
     # ── UI helpers ──
     def set_state(self, state: str, status: str | None = None) -> None:
