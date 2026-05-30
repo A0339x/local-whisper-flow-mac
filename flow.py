@@ -734,17 +734,20 @@ class SettingsController(NSObject):
         self._refresh_shortcuts()
 
     def show(self) -> None:
-        if self._window is None:
-            self._build()
-        self._refresh()
-        if self._window.isMiniaturized():
-            self._window.deminiaturize_(None)
-        NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
-        self._window.center()
-        self._window.makeKeyAndOrderFront_(None)
-        # Force the window visible even when the app is in a background state
-        # (e.g. started by launchd at login), otherwise it opens behind others.
-        self._window.orderFrontRegardless()
+        try:
+            if self._window is None:
+                self._build()
+            self._refresh()
+            if self._window.isMiniaturized():
+                self._window.deminiaturize_(None)
+            NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+            self._window.center()
+            self._window.makeKeyAndOrderFront_(None)
+            # Force the window visible even when the app is in a background state
+            # (e.g. started by launchd at login), otherwise it opens behind others.
+            self._window.orderFrontRegardless()
+        except Exception as e:
+            log(f"  settings.show error: {e!r}")
 
     def micChanged_(self, sender):  # noqa: N802
         idx = sender.indexOfSelectedItem()
