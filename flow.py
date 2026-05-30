@@ -600,6 +600,18 @@ class RecordingHUD:
 
 # ── Settings window ──────────────────────────────────────────────────────────
 
+class FirstMouseButton(NSButton):
+    """An NSButton that acts on the FIRST click even when its window isn't key.
+
+    Menu-bar (accessory) app windows often aren't the key window when shown, so a
+    stock button swallows the first click just to activate the window — making
+    toggles feel dead (the click never reaches the action). Accepting first mouse
+    makes a single click always register."""
+
+    def acceptsFirstMouse_(self, event):  # noqa: N802
+        return True
+
+
 class SettingsController(NSObject):
     """A small titled window with a microphone picker + warm-mic toggle."""
 
@@ -654,7 +666,7 @@ class SettingsController(NSObject):
         cv.addSubview_(popup)
         self._popup = popup
 
-        warm = NSButton.alloc().initWithFrame_(NSMakeRect(20, 278, 380, 22))
+        warm = FirstMouseButton.alloc().initWithFrame_(NSMakeRect(20, 278, 380, 22))
         warm.setButtonType_(NSButtonTypeSwitch)
         warm.setTitle_("Keep mic warm (instant capture; orange mic dot stays on)")
         warm.setTarget_(self)
@@ -666,7 +678,7 @@ class SettingsController(NSObject):
             label(title, NSMakeRect(20, y + 4, 130, 18))
             val = label("", NSMakeRect(150, y + 4, 110, 18))
             val.setFont_(NSFont.boldSystemFontOfSize_(13))
-            btn = NSButton.alloc().initWithFrame_(NSMakeRect(270, y, 130, 28))
+            btn = FirstMouseButton.alloc().initWithFrame_(NSMakeRect(270, y, 130, 28))
             btn.setTitle_("Change…")
             btn.setBezelStyle_(1)
             btn.setTarget_(self)
@@ -677,7 +689,7 @@ class SettingsController(NSObject):
         self._dict_val, self._dict_btn = shortcut_row(236, "Dictation key:", "changeDictation:")
         self._cmd_val, self._cmd_btn = shortcut_row(200, "Command key:", "changeCommand:")
 
-        fmt = NSButton.alloc().initWithFrame_(NSMakeRect(20, 162, 384, 22))
+        fmt = FirstMouseButton.alloc().initWithFrame_(NSMakeRect(20, 162, 384, 22))
         fmt.setButtonType_(NSButtonTypeSwitch)
         fmt.setTitle_("Smart formatting — clean up dictation (off = faster, raw)")
         fmt.setTarget_(self)
@@ -685,7 +697,7 @@ class SettingsController(NSObject):
         cv.addSubview_(fmt)
         self._fmt_btn = fmt
 
-        hist = NSButton.alloc().initWithFrame_(NSMakeRect(20, 120, 200, 30))
+        hist = FirstMouseButton.alloc().initWithFrame_(NSMakeRect(20, 120, 200, 30))
         hist.setTitle_("Dictation History…")
         hist.setBezelStyle_(1)
         hist.setTarget_(self)
