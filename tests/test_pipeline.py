@@ -369,6 +369,20 @@ ok("write mode ALLOWS 'write a thank you note'", not flow.is_hallucination("writ
 ok("dictation blocks 'thanks for watching'", flow.is_hallucination("Thanks for watching"))
 ok("dictation ALLOWS legit 'Thank you.'", not flow.is_hallucination("Thank you."))
 ok("dictation ALLOWS legit 'Okay.'", not flow.is_hallucination("Okay."))
+# Email-only scaffolding: greeting/sign-off in email, just the body elsewhere
+ok("email ctx: Apple Mail", flow.is_email_context("Mail", "com.apple.mail", ""))
+ok("email ctx: Gmail in browser tab",
+   flow.is_email_context("Google Chrome", "com.google.Chrome", "Inbox - me@gmail.com - Gmail"))
+ok("NOT email: Slack", not flow.is_email_context("Slack", "com.tinyspeck.slackmacgap", "general"))
+ok("NOT email: Notes", not flow.is_email_context("Notes", "com.apple.Notes", ""))
+ok("strips greeting+signoff for message",
+   flow._strip_scaffolding("Hi,\n\nThe migration is done.\n\nThanks,") == "The migration is done.")
+ok("strips 'Hello team,' greeting",
+   "hello" not in flow._strip_scaffolding("Hello team,\n\nStandup moved to 3pm.").lower())
+ok("keeps inline 'Hey Jake,… Thanks!'",
+   flow._strip_scaffolding("Hey Jake, can't make dinner. Thanks!") == "Hey Jake, can't make dinner. Thanks!")
+ok("plain body unchanged by stripper",
+   flow._strip_scaffolding("The deploy is done and looks good.") == "The deploy is done and looks good.")
 
 # ── SUMMARY ──────────────────────────────────────────────────────────────────
 print("\n" + "=" * 72)

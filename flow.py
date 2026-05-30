@@ -1757,6 +1757,36 @@ def _dedupe_signoff(lines: list[str]) -> list[str]:
     return out
 
 
+# A line that is ONLY a greeting ("Hi," "Hey Jake," "Dear team,"). Used to strip
+# email scaffolding from casual messages. Bounded name (≤3 words) so it won't
+# swallow an inline opener that IS the message ("Hey Jake, I can't make it").
+_GREETING_LINE_RE = re.compile(
+    r"(?i)^(hi|hey|hiya|hello|dear|greetings|good (?:morning|afternoon|evening))"
+    r"(?:\s+[a-z][\w'-]*){0,3}\s*[,:!]?$")
+
+
+def _strip_scaffolding(text: str) -> str:
+    """Remove a standalone greeting line at the top and standalone sign-off
+    line(s) at the bottom — for casual messages that shouldn't read like email.
+    Inline greetings/thanks that ARE the message ("Hey Jake, …", "…see you.
+    Thanks!") are left alone because they aren't on their own line."""
+    lines = text.split("\n")
+    i = 0
+    while i < len(lines) and not lines[i].strip():
+        i += 1
+    if i < len(lines) and _GREETING_LINE_RE.match(lines[i].strip()):
+        lines = lines[i + 1:]
+    while lines:
+        j = len(lines) - 1
+        while j >= 0 and not lines[j].strip():
+            j -= 1
+        if j >= 0 and _SIGNOFF_RE.match(lines[j].strip()):
+            lines = lines[:j]
+        else:
+            break
+    return "\n".join(lines).strip()
+
+
 def _clean_draft(text: str) -> str:
     """Remove leftover [placeholders] and meta-commentary, tidy the result.
 
@@ -1786,13 +1816,23 @@ def _clean_draft(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 
-def generate_text(instruction: str, url: str, model: str, style: str = "") -> str:
-    """Draft fresh content from a spoken instruction (Command Mode, no selection)."""
+def generate_text(instruction: str, url: str, model: str, style: str = "",
+                  email: bool = False) -> str:
+    """Draft fresh content from a spoken instruction (Command Mode, no selection).
+
+    When `email` is False (a chat/message/note, not an email client), the draft
+    is just the message body — no "Hi," opener, no "Thanks,"/"Best," sign-off.
+    """
     if not (instruction and instruction.strip()):
         return ""
     sys = GENERATE_SYSTEM
     if style:
         sys += f"\n\nWrite it to sound {style}."
+    if not email:
+        sys += ("\n\nThis is a short message (chat/DM/note), NOT an email. Write "
+                "ONLY the message itself. Do NOT add a greeting line like \"Hi,\" "
+                "and do NOT add a sign-off like \"Thanks,\" or \"Best,\" on its own "
+                "line. Just the words a person would type into a chat box.")
     messages = [
         {"role": "system", "content": sys},
         {"role": "user", "content": f"Write this for me: {instruction}"},
@@ -1807,7 +1847,10 @@ def generate_text(instruction: str, url: str, model: str, style: str = "") -> st
     out = resp.json()["message"]["content"].strip()
     if len(out) >= 2 and out[0] == out[-1] and out[0] in "\"'":
         out = out[1:-1].strip()
-    return _clean_draft(out)
+    out = _clean_draft(out)
+    if not email:  # safety net if the model adds scaffolding anyway
+        out = _strip_scaffolding(out)
+    return out
 
 
 _FILLER_WORDS = {
@@ -1945,6 +1988,23 @@ def style_for_app(styles_cfg: dict, name: str = "", bundle: str = "", title: str
         if k and k in hay:
             return val
     return ""
+
+
+# Email clients & webmail — when the Write-mode target is one of these, drafts
+# keep a greeting and sign-off; everywhere else they're just the message body.
+_EMAIL_HINTS = (
+    "mail", "gmail", "outlook", "proton", "spark", "airmail", "thunderbird",
+    "superhuman", "fastmail", "hey.com", "missive",
+)
+
+
+def is_email_context(name: str = "", bundle: str = "", title: str = "") -> bool:
+    """True if the focused app/site looks like email (so a draft should read like
+    one). Matches app name, bundle id, and window/tab title — so webmail in a
+    browser counts. 'mail' covers Apple Mail (com.apple.mail), Gmail, ProtonMail,
+    Yahoo Mail, etc."""
+    hay = f"{name} {bundle} {title}".lower()
+    return any(h in hay for h in _EMAIL_HINTS)
 
 
 def format_text(text: str, url: str, model: str, tone: str | None = None, style: str = "") -> str:
@@ -2563,10 +2623,11 @@ class FlowApp(rumps.App):
             cmd_model = fcfg.get("command_model") or fcfg["model"]
             if generating:
                 self.status_item.title = "Writing…"
-                style = style_for_app(
-                    self.cfg.get("styles", {}), *getattr(self, "_command_app", ("", "", "")))
-                result = generate_text(instruction, fcfg["ollama_url"], cmd_model, style)
-                log(f"  drafted ({cmd_model}) → {result!r}")
+                app_ctx = getattr(self, "_command_app", ("", "", ""))
+                style = style_for_app(self.cfg.get("styles", {}), *app_ctx)
+                email = is_email_context(*app_ctx)
+                result = generate_text(instruction, fcfg["ollama_url"], cmd_model, style, email=email)
+                log(f"  drafted ({cmd_model}, email={email}) → {result!r}")
             else:
                 self.status_item.title = "Editing…"
                 result = apply_command(
