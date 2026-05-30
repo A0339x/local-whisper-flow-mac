@@ -34,6 +34,10 @@ language = "en"
 # Bias recognition toward names/jargon it might otherwise mis-hear (brand names,
 # acronyms, people's names…). Add your own, comma-separated. Set "" to disable.
 vocabulary = "Claude Code, Anthropic, Ollama, Whisper, MLX, Wispr Flow, GitHub, macOS"
+# Context-aware spelling: read proper nouns already in your focused text field
+# and bias Whisper toward those spellings. Read happens at record-start (off the
+# critical path). Works in native fields; harmlessly no-ops in browsers/Electron.
+context_aware = true
 
 [tone]
 # Detect vocal excitement from the recording (loudness + pitch variation,

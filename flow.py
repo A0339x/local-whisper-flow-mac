@@ -65,6 +65,7 @@ from Foundation import NSObject
 from PyObjCTools import AppHelper
 from ApplicationServices import (
     AXUIElementCreateApplication,
+    AXUIElementCreateSystemWide,
     AXUIElementCopyAttributeValue,
 )
 
@@ -1459,6 +1460,52 @@ def frontmost_app() -> tuple[str, str, str]:
     return ("", "", "")
 
 
+def focused_field_text(limit: int = 600) -> str:
+    """Text in the currently-focused field (for spelling context). Best-effort:
+    works in native text fields; often empty in browsers/Electron — that's fine."""
+    try:
+        system = AXUIElementCreateSystemWide()
+        err, el = AXUIElementCopyAttributeValue(system, "AXFocusedUIElement", None)
+        if err != 0 or el is None:
+            return ""
+        err, val = AXUIElementCopyAttributeValue(el, "AXValue", None)
+        if err == 0 and isinstance(val, str) and val.strip():
+            return val[-limit:]
+    except Exception:
+        pass
+    return ""
+
+
+# Common capitalized words to ignore when harvesting proper nouns from context.
+_CONTEXT_STOPWORDS = {
+    "the", "a", "an", "i", "i'm", "i'll", "i've", "we", "you", "he", "she", "it",
+    "they", "this", "that", "these", "those", "and", "but", "or", "so", "if",
+    "to", "of", "in", "on", "at", "for", "with", "from", "as", "is", "are", "was",
+    "be", "hi", "hey", "hello", "thanks", "thank", "best", "regards", "dear",
+    "yes", "no", "ok", "okay", "please", "when", "what", "where", "who", "how",
+    "why", "my", "your", "our", "their", "his", "her", "can", "could", "would",
+    "should", "will", "do", "does", "did", "let", "here", "there", "just", "also",
+    "then", "now", "get", "got", "see", "make", "like", "want", "need", "let's",
+}
+
+
+def extract_context_terms(text: str, limit: int = 30) -> list[str]:
+    """Pull likely proper nouns / names / jargon (capitalized or camelCase tokens)
+    from on-screen text, to bias Whisper toward the right spellings."""
+    terms, seen = [], set()
+    for w in re.findall(r"\b[A-Za-z][A-Za-z'.-]{1,}\b", text or ""):
+        lw = w.lower().strip(".'-")
+        if not lw or lw in _CONTEXT_STOPWORDS or lw in seen:
+            continue
+        # capitalized (proper noun) or internal capital (camelCase / brand)
+        if w[0].isupper() or any(c.isupper() for c in w[1:]):
+            seen.add(lw)
+            terms.append(w)
+            if len(terms) >= limit:
+                break
+    return terms
+
+
 def style_for_app(styles_cfg: dict, name: str = "", bundle: str = "", title: str = "") -> str:
     """Return the tone instruction configured for the current app/site, or ''.
 
@@ -1869,6 +1916,14 @@ class FlowApp(rumps.App):
             rumps.notification("Voice-To-Text", "Could not start recording", str(e))
             return
         self._target_app = frontmost_app()  # where the text will land
+        # Context-aware spelling: harvest proper nouns from the focused field now
+        # (off the critical path) to bias transcription toward the right spellings.
+        self._context_terms = []
+        if self.cfg["transcription"].get("context_aware", False):
+            self._context_terms = extract_context_terms(focused_field_text())
+            if self._context_terms:
+                log(f"  context terms: {', '.join(self._context_terms[:8])}"
+                    + ("…" if len(self._context_terms) > 8 else ""))
         if self.cfg["sounds"]["enabled"]:
             play(SOUND_START)
         AppHelper.callAfter(self.hud.show)
@@ -2030,11 +2085,15 @@ class FlowApp(rumps.App):
                 log("  (no speech detected — nothing pasted)")
                 self.set_state(IDLE, "Heard nothing")
                 return
+            glossary = self.cfg["transcription"].get("vocabulary", "")
+            ctx = getattr(self, "_context_terms", [])
+            if ctx:
+                glossary = (glossary + ", " + ", ".join(ctx)).strip(", ")
             result = transcribe(
                 audio,
                 self.cfg["transcription"]["model"],
                 self.cfg["transcription"]["language"],
-                self.cfg["transcription"].get("vocabulary", ""),
+                glossary,
             )
             tone_cfg = self.cfg.get("tone", {})
             text = transcript_with_paragraphs(
