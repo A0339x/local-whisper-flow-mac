@@ -48,6 +48,7 @@ from AppKit import (
     NSStatusWindowLevel,
     NSWindowCollectionBehaviorCanJoinAllSpaces,
     NSWindowCollectionBehaviorStationary,
+    NSWindowCollectionBehaviorMoveToActiveSpace,
     NSLineCapStyleRound,
     NSApplication,
     NSPopUpButton,
@@ -740,6 +741,9 @@ class SettingsController(NSObject):
             self._refresh()
             if self._window.isMiniaturized():
                 self._window.deminiaturize_(None)
+            # Follow the user to whatever Space / full-screen app they're in, so
+            # it never opens invisibly on another desktop.
+            self._window.setCollectionBehavior_(NSWindowCollectionBehaviorMoveToActiveSpace)
             NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
             self._window.center()
             self._window.makeKeyAndOrderFront_(None)
@@ -841,6 +845,7 @@ class HistoryController(NSObject):
         self._reload()
         if self._window.isMiniaturized():
             self._window.deminiaturize_(None)
+        self._window.setCollectionBehavior_(NSWindowCollectionBehaviorMoveToActiveSpace)
         NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
         self._window.center()
         self._window.makeKeyAndOrderFront_(None)
@@ -909,6 +914,7 @@ class OnboardingController(NSObject):
             self._window = win
         self._step = 0
         self._render()
+        self._window.setCollectionBehavior_(NSWindowCollectionBehaviorMoveToActiveSpace)
         NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
         self._window.center()
         self._window.makeKeyAndOrderFront_(None)
@@ -1606,7 +1612,8 @@ def apply_command(instruction: str, selected: str, url: str, model: str) -> str:
     ]
     resp = requests.post(
         f"{url.rstrip('/')}/api/chat",
-        json={"model": model, "messages": messages, "stream": False, "options": {"temperature": 0.3}},
+        json={"model": model, "messages": messages, "stream": False,
+              "options": {"temperature": 0.3}, "keep_alive": "1h"},
         timeout=120,
     )
     resp.raise_for_status()
@@ -1749,6 +1756,7 @@ def format_text(text: str, url: str, model: str, tone: str | None = None, style:
             "messages": messages,
             "stream": False,
             "options": {"temperature": 0.2},
+            "keep_alive": "1h",  # keep the model warm → no cold-start reloads
         },
         timeout=120,
     )

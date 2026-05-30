@@ -27,8 +27,9 @@ input_device = "builtin"
 
 [transcription]
 # Any mlx-community Whisper model on Hugging Face. Downloaded & cached on first use.
-# Full large-v3 = best accuracy (esp. short clips). Use ...-turbo for max speed.
-model = "mlx-community/whisper-large-v3-mlx"
+# ...-turbo = much faster (best for snappiness); ...-v3-mlx = most accurate but
+# noticeably slower on longer dictation.
+model = "mlx-community/whisper-large-v3-turbo"
 # Force a language (faster, more accurate) or set "" to auto-detect.
 language = "en"
 # Bias recognition toward names/jargon it might otherwise mis-hear (brand names,
