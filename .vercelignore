@@ -1,0 +1,13 @@
+.venv
+__pycache__
+*.pyc
+*.log
+voice-to-text.log
+history.jsonl
+prosody_baseline.json
+.onboarded
+.show_settings
+config.local.toml
+experiments/voice_test_recordings
+*.app
+.cache
