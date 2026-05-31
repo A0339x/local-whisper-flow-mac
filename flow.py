@@ -1745,7 +1745,17 @@ CRITICAL: if the instruction tells you what to leave OUT or change (no sign-off,
 greeting, keep it short, don't mention X), just silently do it. NEVER write a \
 sentence that talks about the instruction or explains what you included or left out \
 (no "as per the instruction", no "a sign-off is not needed here", no notes). Output \
-only the message itself — nothing a recipient wouldn't expect to read."""
+only the message itself — nothing a recipient wouldn't expect to read.
+
+CRITICAL: the instruction is the user talking to YOU about what to say — often a \
+casual aside ("let's follow up with them", "tell them I can't make it", "reply that \
+I agree", "ask them about the invoice"). Do NOT copy that phrasing into the message. \
+Write the actual message in the user's own first-person voice, addressed DIRECTLY to \
+the recipient: turn third-person references to the recipient ("them", "they", "him", \
+"her") into direct address ("you"), and drop meta-words like "let's", "reply", \
+"respond", "tell them", "follow up with them". Example: "let's follow up with them \
+about the credit card application" becomes "I wanted to follow up on the status of \
+my credit card application." — a message TO the recipient, never about them."""
 
 # Strip any bracketed placeholder the model slips in anyway, e.g. "[Your Name]".
 _PLACEHOLDER_RE = re.compile(r"[\[\<]\s*[^\[\]\<\>\n]{0,40}?\s*[\]\>]")
