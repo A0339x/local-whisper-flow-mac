@@ -2159,7 +2159,11 @@ def generate_text(instruction: str, url: str, model: str, style: str = "",
             "interest, decisions, agreements, opinions, or \"next steps\" the user "
             "has not stated (e.g. never say \"I'm on board\", \"I'm in\", or \"let me "
             "know the next steps\" unless the user told you to). When unsure, keep it "
-            "short, warm, and low-commitment. Ignore unrelated UI text and sidebars.")
+            "short, warm, and low-commitment.\n"
+            "The text may also contain a SIDEBAR list of OTHER conversations (names + "
+            "short previews) and app navigation — those are NOT the conversation. The "
+            "real conversation is the longest back-and-forth exchange; reply to ITS "
+            "most recent message and ignore everything else.")
     user = f"Write this for me: {instruction}"
     if context:
         user = (f"{user}\n\nThe conversation on screen (both people's messages, mixed):\n"
@@ -2297,15 +2301,44 @@ def focused_field_text(limit: int = 600) -> str:
     return ""
 
 
+def _ax_subtree_text(node, max_nodes: int = 4000, max_depth: int = 40,
+                     deadline: float = 0.0, limit: int = 12000) -> str:
+    """Collect visible text from an AX subtree (pre-order = reading order),
+    bounded by node/depth/time/length so it can never hang."""
+    parts, seen, total, n = [], set(), 0, 0
+    stack = [(node, 0)]
+    while stack and n < max_nodes and total < limit:
+        if deadline and time.time() > deadline:
+            break
+        nd, d = stack.pop()
+        n += 1
+        for a in ("AXValue", "AXTitle", "AXDescription"):
+            err, v = AXUIElementCopyAttributeValue(nd, a, None)
+            if err == 0 and isinstance(v, str):
+                s = v.strip()
+                if len(s) >= 2 and s not in seen:
+                    seen.add(s)
+                    parts.append(s)
+                    total += len(s) + 1
+                break
+        if d < max_depth:
+            err, kids = AXUIElementCopyAttributeValue(nd, "AXChildren", None)
+            if err == 0 and kids:
+                for k in reversed(list(kids)):
+                    stack.append((k, d + 1))
+    return "\n".join(parts)[:limit]
+
+
 def read_window_context(limit: int = 12000, max_nodes: int = 5000,
                         max_depth: int = 40, time_budget: float = 1.0) -> str:
-    """Best-effort read of the visible TEXT in the focused window via the
-    Accessibility API, so Command/Write mode can write context-aware replies.
+    """Read the visible TEXT around the cursor via the Accessibility API, so
+    Command/Write mode can write context-aware replies.
 
-    Reads well in browsers and native apps (Chrome returns a full page in ~25ms);
-    sparse in locked-down Electron like Slack (returns little — that's fine, we
-    just write without context). Bounded by node/depth/time so it can never hang.
-    Never raises."""
+    Prefers the CONTENT PANE near the focused element over the whole window: in a
+    chat app the message thread is a sibling of the chat-list sidebar, so walking
+    up from the compose box captures the thread *before* hitting the sidebar/nav
+    noise. Falls back to the whole window. Bounded so it can never hang; never
+    raises. (Sparse in locked-down Electron like Slack — that's fine.)"""
     try:
         app = NSWorkspace.sharedWorkspace().frontmostApplication()
         if app is None:
@@ -2315,30 +2348,30 @@ def read_window_context(limit: int = 12000, max_nodes: int = 5000,
             AXUIElementSetAttributeValue(ax, "AXManualAccessibility", True)
         except Exception:
             pass
+        deadline = time.time() + time_budget
+        # 1) Scope to the content pane near the cursor.
+        try:
+            system = AXUIElementCreateSystemWide()
+            err, el = AXUIElementCopyAttributeValue(system, "AXFocusedUIElement", None)
+        except Exception:
+            el = None
+        if el is not None:
+            node = el
+            for _ in range(15):
+                err, parent = AXUIElementCopyAttributeValue(node, "AXParent", None)
+                if err != 0 or parent is None or time.time() > deadline:
+                    break
+                txt = _ax_subtree_text(parent, max_nodes=3000, max_depth=max_depth,
+                                       deadline=deadline, limit=limit)
+                if len(txt) >= 600:  # substantial pane = the thread, sans sidebar
+                    return txt
+                node = parent
+        # 2) Fallback: the whole focused window.
         err, win = AXUIElementCopyAttributeValue(ax, "AXFocusedWindow", None)
         if err != 0 or win is None:
             return ""
-        deadline = time.time() + time_budget
-        parts, seen, total, n = [], set(), 0, 0
-        stack = [(win, 0)]
-        while stack and n < max_nodes and total < limit and time.time() < deadline:
-            node, d = stack.pop()
-            n += 1
-            for a in ("AXValue", "AXTitle", "AXDescription"):
-                err, v = AXUIElementCopyAttributeValue(node, a, None)
-                if err == 0 and isinstance(v, str):
-                    s = v.strip()
-                    if len(s) >= 2 and s not in seen:
-                        seen.add(s)
-                        parts.append(s)
-                        total += len(s) + 1
-                    break
-            if d < max_depth:
-                err, kids = AXUIElementCopyAttributeValue(node, "AXChildren", None)
-                if err == 0 and kids:
-                    for k in reversed(list(kids)):  # pre-order = reading order
-                        stack.append((k, d + 1))
-        return "\n".join(parts)[:limit]
+        return _ax_subtree_text(win, max_nodes=max_nodes, max_depth=max_depth,
+                                deadline=deadline, limit=limit)
     except Exception:
         return ""
 
