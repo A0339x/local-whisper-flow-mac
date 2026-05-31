@@ -3768,6 +3768,12 @@ class FlowApp(rumps.App):
             base_url = fcfg.get("command_base_url", "")
             key_env = fcfg.get("command_api_key_env", "OPENAI_API_KEY")
             key_file = fcfg.get("command_api_key_file", "")
+            # Cloud writing configured but no key (e.g. online for dictation only,
+            # no Groq key) → fall back to the on-device model so writing still works.
+            if (base_url or "").strip() and not _resolve_api_key(key_env, key_file):
+                log("  no cloud write key — using on-device model for AI writing")
+                base_url = ""
+                cmd_model = fcfg.get("model") or "gpt-oss:20b"
             where = "cloud" if (base_url or "").strip() else "local"
             if generating:
                 self.status_item.title = "Writing…"

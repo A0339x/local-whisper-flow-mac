@@ -330,17 +330,16 @@ button{font-family:inherit;cursor:pointer;border:none;font-size:13.5px;font-weig
       </div>
     </section>
 
-    <!-- API KEYS (online) -->
+    <!-- API KEY (online) -->
     <section class="step" data-key="apikey">
-      <div class="kicker">Online keys</div>
-      <h1>Two free <em>keys</em>.</h1>
-      <p class="lede">Online mode streams dictation through AssemblyAI and writes with Groq. Both are free to start, no card. Paste each below — they’re stored encrypted in your macOS Keychain, never uploaded or committed.</p>
+      <div class="kicker">Online key</div>
+      <h1>One free <em>key</em>.</h1>
+      <p class="lede">Online mode streams your dictation through AssemblyAI — much faster than on-device. It’s free to start, no card. Paste your key below; it’s stored encrypted in your macOS Keychain, never uploaded or committed.</p>
       <div class="content">
         <div class="perm">
-          <div class="prow"><div class="ico">🎙️</div><div class="tx"><b>AssemblyAI <span id="aaiStatus" class="kchip">— not set</span></b><span>Streaming dictation. Key from assemblyai.com.</span></div><button class="go" data-act="enterKey" data-which="assemblyai">Paste key</button></div>
-          <div class="prow"><div class="ico">🧠</div><div class="tx"><b>Groq <span id="groqStatus" class="kchip">— not set</span></b><span>AI writing (gpt-oss-120b). Key from console.groq.com.</span></div><button class="go" data-act="enterKey" data-which="groq">Paste key</button></div>
+          <div class="prow"><div class="ico">🎙️</div><div class="tx"><b>AssemblyAI <span id="aaiStatus" class="kchip">— not set</span></b><span>Streaming dictation. Free key from assemblyai.com.</span></div><button class="go" data-act="enterKey" data-which="assemblyai">Paste key</button></div>
         </div>
-        <div class="modenote online"><span class="tag">🔒 Keychain</span> — keys are entered in a secure macOS prompt and stored encrypted. Nothing is written to the project or sent anywhere but the service you’re calling.</div>
+        <div class="modenote online"><span class="tag">🔒 Keychain</span> — the key is entered in a secure macOS prompt and stored encrypted. AI writing runs on-device, so no second key is needed. (Add a Groq key in Settings for sharper cloud writing.)</div>
       </div>
     </section>
 
@@ -475,6 +474,11 @@ window.flowKeyStatus=function(which, set){
   const el=document.getElementById(which==='assemblyai'?'aaiStatus':'groqStatus'); if(!el) return;
   el.textContent = set ? '— set ✓' : '— not set';
   el.classList.toggle('set', !!set);
+  const btn=document.querySelector(`[data-act="enterKey"][data-which="${which}"]`);
+  if(btn){
+    btn.textContent = set ? 'Replace' : 'Paste key';
+    const row=btn.closest('.prow'); if(row) row.classList.toggle('granted', !!set);
+  }
 };
 window.flowShortcut=function(which, label){
   const e=document.getElementById(which==='dictate'?'lblDictate':'lblCommand'); if(e) e.textContent=label;
