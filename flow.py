@@ -2663,6 +2663,7 @@ class FlowApp(rumps.App):
             rumps.MenuItem("Quit", callback=rumps.quit_application),
         ]
         self._populate_mic_menu()
+        self.title = self._menu_glyph(IDLE)  # mode-colored icon from the start
 
         # The companion "Settings" app signals us by creating this file.
         self._settings_trigger = CONFIG_PATH.parent / ".show_settings"
@@ -2772,12 +2773,12 @@ class FlowApp(rumps.App):
         if self._is_offline():
             wmodel = (f.get("command_model") or f.get("model") or "local model")
             return {"offline": True,
-                    "mode": "Mode:  🔒 Offline · on-device",
+                    "mode": "Mode:  🟢 Offline · on-device",
                     "voice": "Voice:  on-device Whisper",
                     "writing": f"Writing:  {wmodel} (on-device)"}
         wmodel = (f.get("command_model") or "cloud").split("/")[-1]
         return {"offline": False,
-                "mode": "Mode:  ☁️ Online · cloud (Groq)",
+                "mode": "Mode:  🔵 Online · cloud (Groq)",
                 "voice": "Voice:  Groq whisper-large-v3",
                 "writing": f"Writing:  {wmodel} (Groq)"}
 
@@ -2844,6 +2845,10 @@ class FlowApp(rumps.App):
             log(f"  could not persist mode: {e}")
 
     def _refresh_mode_ui(self) -> None:
+        try:  # recolor the menu-bar icon for the new mode (when idle)
+            self.title = self._menu_glyph(getattr(self, "state", IDLE))
+        except Exception:
+            pass
         lbls = self._mode_labels()
         for attr, key in (("mode_item", "mode"), ("voice_item", "voice"), ("writing_item", "writing")):
             it = getattr(self, attr, None)
@@ -2899,9 +2904,17 @@ class FlowApp(rumps.App):
             log(f"  could not persist {section + '.' if section else ''}{key}: {e}")
 
     # ── UI helpers ──
+    def _menu_glyph(self, state: str) -> str:
+        """Menu-bar icon. Idle is colored by mode — 🟢 green = Offline (on-device),
+        🔵 blue = Online (cloud) — so the mode is visible at a glance. Active states
+        keep their own glyphs."""
+        if state == IDLE:
+            return "🟢" if self._is_offline() else "🔵"
+        return GLYPH[state]
+
     def set_state(self, state: str, status: str | None = None) -> None:
         self.state = state
-        self.title = GLYPH[state]
+        self.title = self._menu_glyph(state)
         self.status_item.title = status or state.capitalize()
 
     # ── Hotkey ──
