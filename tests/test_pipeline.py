@@ -418,6 +418,13 @@ ok("keeps intentional triple 'no no no'",
    flow.collapse_repeats("no no no that is fine") == "no no no that is fine")
 ok("keeps normal sentence unchanged",
    flow.collapse_repeats("the meeting is at three") == "the meeting is at three")
+# Pretty bullets: markdown * - + → • (numbered lists + mid-line hyphens untouched)
+ok("'* item' → '• item'", flow.prettify_bullets("* Finish the API") == "• Finish the API")
+ok("'- item' → '• item'", flow.prettify_bullets("- fix the bug") == "• fix the bug")
+ok("nested '  + item' → '  • item'", flow.prettify_bullets("  + nested") == "  • nested")
+ok("numbered list untouched", flow.prettify_bullets("1. step one") == "1. step one")
+ok("mid-line hyphen untouched", flow.prettify_bullets("store - it was closed") == "store - it was closed")
+ok("draft bullets prettified end-to-end", "•" in flow._clean_draft("Do:\n* a\n* b") and "*" not in flow._clean_draft("Do:\n* a\n* b"))
 # Cloud STT backend (Groq / OpenAI-compatible) — mock the HTTP call
 import io as _io, wave as _wave
 _cap = {}

@@ -56,6 +56,7 @@ from AppKit import (
     NSButton,
     NSButtonTypeSwitch,
     NSTextField,
+    NSSecureTextField,
     NSScrollView,
     NSTableView,
     NSTableColumn,
@@ -1193,7 +1194,8 @@ class OnboardingController(NSObject):
             NSMakeRect(40, OB_H - 150, OB_W - 80, 64),
         )
         self._button(cv, "Open console.groq.com", NSMakeRect(40, OB_H - 196, 220, 30), "openGroq:")
-        fld = NSTextField.alloc().initWithFrame_(NSMakeRect(40, OB_H - 248, OB_W - 200, 28))
+        # Secure (masked) field — the key shows as dots, no shoulder-surfing.
+        fld = NSSecureTextField.alloc().initWithFrame_(NSMakeRect(40, OB_H - 248, OB_W - 200, 28))
         fld.setEditable_(True); fld.setBezeled_(True); fld.setDrawsBackground_(True)
         fld.setPlaceholderString_("gsk_…  (paste your key)")
         cv.addSubview_(fld)
@@ -1899,6 +1901,8 @@ def apply_command(instruction: str, selected: str, url: str, model: str,
     out = chat_complete(messages, url, model, 0.3, base_url, api_key_env, api_key_file)
     if len(out) >= 2 and out[0] == out[-1] and out[0] in "\"'":
         out = out[1:-1].strip()
+    if out:
+        out = "\n".join(prettify_bullets(ln) for ln in out.split("\n"))
     return out or selected
 
 
@@ -2059,8 +2063,16 @@ def _clean_draft(text: str) -> str:
                 continue
         lines.append(cleaned)
     lines = _dedupe_signoff(lines)
+    lines = [prettify_bullets(ln) for ln in lines]
     # Collapse 3+ blank lines (left by removals) to a single blank line.
     return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
+def prettify_bullets(line: str) -> str:
+    """Turn a markdown bullet marker (* - +) at the start of a line into a real
+    "• " bullet, so AI-written lists look clean pasted into email/chat (which
+    don't render markdown). Leaves numbered lists and mid-line hyphens alone."""
+    return re.sub(r"^(\s*)[*+\-]\s+", r"\1• ", line)
 
 
 def generate_text(instruction: str, url: str, model: str, style: str = "",
