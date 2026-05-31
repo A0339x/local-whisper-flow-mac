@@ -1051,6 +1051,7 @@ class OnboardingController(NSObject):
             self._web_window.center()
             self._web_window.makeKeyAndOrderFront_(None)
             self._web_window.orderFrontRegardless()
+            self._start_perm_poll()
             return True
         except Exception as e:
             log(f"  WebView onboarding failed ({e}) — native onboarding")
@@ -1097,13 +1098,53 @@ class OnboardingController(NSObject):
             return False
 
     @objc.python_method
+    def _mic_granted(self) -> bool:
+        try:
+            import AVFoundation
+            st = AVFoundation.AVCaptureDevice.authorizationStatusForMediaType_(
+                AVFoundation.AVMediaTypeAudio)
+            return int(st) == 3  # AVAuthorizationStatusAuthorized
+        except Exception:
+            return False
+
+    @objc.python_method
+    def _input_granted(self) -> bool:
+        try:
+            import Quartz
+            return bool(Quartz.CGPreflightListenEventAccess())
+        except Exception:
+            return False
+
+    @objc.python_method
+    def _perm_status(self) -> dict:
+        return {"mic": self._mic_granted(), "acc": self._acc_granted(),
+                "input": self._input_granted()}
+
+    @objc.python_method
+    def _start_perm_poll(self) -> None:
+        """Push live permission status to the page while onboarding is open, so the
+        green dots light up the moment each permission is granted in System Settings."""
+        def loop():
+            last = None
+            for _ in range(150):  # ~5 min cap
+                win = getattr(self, "_web_window", None)
+                if win is None or not win.isVisible():
+                    break
+                st = self._perm_status()
+                if st != last:
+                    self._eval_js(f"window.flowPerms({json.dumps(st)})")
+                    last = st
+                time.sleep(2)
+        threading.Thread(target=loop, daemon=True).start()
+
+    @objc.python_method
     def _push_state(self) -> None:
         h = self._app.cfg.get("hotkey", {})
         payload = json.dumps({
             "offline": self._app._is_offline(),
             "dictate": hotkey_label(h.get("key", "alt_r")),
             "command": hotkey_label(h.get("command_key", "alt_l")),
-            "acc": self._acc_granted(),
+            "perms": self._perm_status(),
             "aai": self._key_present("assemblyai"),
             "groq": self._key_present("groq"),
         })
@@ -1120,11 +1161,7 @@ class OnboardingController(NSObject):
             pane = urls.get(str(msg.get("which", "")), "")
             if pane:
                 subprocess.Popen(["open", f"x-apple.systempreferences:com.apple.preference.security?{pane}"])
-                if msg.get("which") == "acc":
-                    def recheck():
-                        time.sleep(1.0)
-                        self._eval_js(f"window.flowPerm({'true' if self._acc_granted() else 'false'})")
-                    threading.Thread(target=recheck, daemon=True).start()
+                # The live poller (_start_perm_poll) flips the dot once granted.
         elif action == "setOffline":
             self._app.apply_offline_mode(bool(msg.get("offline")))
             self._eval_js(f"window.flowKeyStatus('assemblyai', {'true' if self._key_present('assemblyai') else 'false'})")

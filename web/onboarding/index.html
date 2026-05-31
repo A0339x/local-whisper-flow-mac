@@ -167,6 +167,13 @@ h1 em{font-style:italic;color:var(--amber-hi)}
   white-space:nowrap;background:var(--bg-raise);border:1px solid var(--hair);padding:5px 11px;border-radius:8px}
 .kchip{font-weight:600;font-size:11px;color:var(--muted)}
 .kchip.set{color:var(--sage)}
+.prow{transition:border-color .4s var(--ease),box-shadow .4s var(--ease),background .4s var(--ease)}
+.prow.granted{border-color:rgba(95,174,116,.65);
+  box-shadow:0 0 0 1px rgba(95,174,116,.45), 0 0 22px rgba(95,174,116,.18);
+  background:linear-gradient(180deg,rgba(95,174,116,.08),var(--bg-card))}
+button.go.granted{color:var(--sage);border-color:rgba(95,174,116,.55);background:rgba(95,174,116,.14);
+  cursor:default}
+button.go.granted:hover{background:rgba(95,174,116,.14);border-color:rgba(95,174,116,.55);transform:none}
 .statusline{margin-top:16px;font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:8px}
 .statusline .b{width:8px;height:8px;border-radius:50%;background:var(--sage);box-shadow:0 0 10px var(--sage-deep)}
 
@@ -445,15 +452,24 @@ window.flowInit=function(s){
   if(typeof s.offline==='boolean') setOffline(s.offline);
   if(s.dictate){const e=document.getElementById('lblDictate'); if(e) e.textContent=s.dictate;}
   if(s.command){const e=document.getElementById('lblCommand'); if(e) e.textContent=s.command;}
-  if(typeof s.acc==='boolean') window.flowPerm(s.acc);
+  if(s.perms) window.flowPerms(s.perms);
   window.flowKeyStatus('assemblyai', !!s.aai);
   window.flowKeyStatus('groq', !!s.groq);
 };
-window.flowPerm=function(granted){
-  const el=document.getElementById('permStatus'); if(!el) return;
-  el.innerHTML = granted
-    ? '<span class="b"></span> Accessibility granted.'
-    : '<span class="b" style="background:var(--amber);box-shadow:none"></span> Accessibility not yet granted — enable it, then relaunch.';
+window.flowPerms=function(p){
+  ['mic','acc','input'].forEach(k=>{
+    const btn=document.querySelector(`[data-act="openPerm"][data-which="${k}"]`);
+    if(btn){
+      btn.textContent = p[k] ? '✓ Granted' : 'Open';
+      btn.classList.toggle('granted', !!p[k]);
+      const row=btn.closest('.prow'); if(row) row.classList.toggle('granted', !!p[k]);
+    }
+  });
+  const all = p.mic && p.acc && p.input;
+  const el=document.getElementById('permStatus');
+  if(el) el.innerHTML = all
+    ? '<span class="b"></span> All three granted — you’re set.'
+    : '<span class="b" style="background:var(--amber);box-shadow:none"></span> Grant the dimmed ones above (relaunch the app if a dot stays grey).';
 };
 window.flowKeyStatus=function(which, set){
   const el=document.getElementById(which==='assemblyai'?'aaiStatus':'groqStatus'); if(!el) return;
@@ -473,6 +489,11 @@ if(!window.webkit||!window.webkit.messageHandlers){
 buildRail();
 const s0=parseInt(qp.get('step')); if(!isNaN(s0)) i=s0;
 render();
+// Browser preview: ?granted=mic,acc,input to light up the green perimeters.
+if(!window.webkit||!window.webkit.messageHandlers){
+  const g=(qp.get('granted')||'').split(',');
+  if(g.some(Boolean)) window.flowPerms({mic:g.includes('mic'),acc:g.includes('acc'),input:g.includes('input')});
+}
 send({action:'ready'});
 </script>
 </body>
