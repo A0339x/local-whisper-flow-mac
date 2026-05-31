@@ -158,6 +158,8 @@ h1 em{font-style:italic;color:var(--amber-hi)}
 .prow .go{font-size:12px;font-weight:600;color:var(--amber);border:1px solid rgba(245,177,92,.35);
   padding:6px 12px;border-radius:8px;white-space:nowrap;transition:all .25s}
 .prow .go:hover{background:rgba(245,177,92,.14)}
+.prow .size{font-size:12.5px;font-weight:600;color:var(--ink-soft);font-variant-numeric:tabular-nums;
+  white-space:nowrap;background:var(--bg-raise);border:1px solid var(--hair);padding:5px 11px;border-radius:8px}
 .statusline{margin-top:16px;font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:8px}
 .statusline .b{width:8px;height:8px;border-radius:50%;background:var(--sage);box-shadow:0 0 10px var(--sage-deep)}
 
@@ -317,10 +319,14 @@ button{font-family:inherit;cursor:pointer;border:none;font-size:13.5px;font-weig
     <!-- DOWNLOAD (offline) -->
     <section class="step" data-step="4">
       <div class="kicker">Almost there</div>
-      <h1>Get the <em>voice model</em>.</h1>
-      <p class="lede">Offline dictation uses Whisper, running on Apple Silicon. It downloads once (~3&nbsp;GB) and then works forever without internet.</p>
+      <h1>Two models, <em>one time</em>.</h1>
+      <p class="lede">Offline mode runs both jobs on your Mac, so it uses two models. They download once (~16&nbsp;GB total), then work forever with no internet.</p>
       <div class="content">
-        <div class="modenote offline"><span class="tag">🟢 On-device</span> — the model lives on your Mac. First dictation triggers the download automatically; nothing is sent anywhere.</div>
+        <div class="perm">
+          <div class="prow"><div class="ico">🎙️</div><div class="tx"><b>Whisper — speech to text</b><span>Your dictation, transcribed on-device.</span></div><div class="size">~3 GB</div></div>
+          <div class="prow"><div class="ico">🧠</div><div class="tx"><b>gpt-oss:20b — AI writing &amp; edits</b><span>The Left-Option drafts, served by Ollama.</span></div><div class="size">~13 GB</div></div>
+        </div>
+        <div class="modenote offline"><span class="tag">🟢 On-device</span> — the setup script fetches both and installs Ollama (the engine for gpt-oss). Nothing is sent anywhere; it even works on a plane.</div>
       </div>
     </section>
 
