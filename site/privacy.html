@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Privacy Policy — Voice To Text</title>
+<title>Privacy Policy · Voice To Text</title>
 <meta name="description" content="Voice To Text privacy policy: private by default, nothing leaves your Mac unless you choose Online mode.">
 <link rel="stylesheet" href="style.css">
 </head>
@@ -23,9 +23,9 @@
 <article class="prose">
   <h1>Privacy Policy</h1>
   <div class="updated">Last updated: May 31, 2026</div>
-  <p class="lede">Voice To Text is built privacy-first. By default it runs entirely on your Mac, and it has no servers, no accounts, and no analytics. This page explains exactly what happens to your data — in plain language.</p>
+  <p class="lede">Voice To Text is built privacy-first. By default it runs entirely on your Mac, and it has no servers, no accounts, and no analytics. This page explains exactly what happens to your data, in plain language.</p>
 
-  <div class="callout"><b>The short version:</b> In <b>Offline</b> mode, your voice and text never leave your device. In <b>Online</b> mode, only the audio and instructions you deliberately dictate are sent to Groq to be processed. We never collect, store, sell, or transmit your data to ourselves — there is no "ourselves" to send it to.</div>
+  <div class="callout"><b>The short version:</b> In <b>Offline</b> mode, your voice and text never leave your device. In <b>Online</b> mode, only the audio and instructions you deliberately dictate are sent to Groq to be processed. We never collect, store, sell, or transmit your data to ourselves. There is no "ourselves" to send it to.</div>
 
   <h2>Who runs this</h2>
   <p>Voice To Text is free, open-source software that you install and run on your own Mac. There is no company operating a backend service, no user accounts, and no central servers that receive your data. The developers cannot see your dictations, your text, or how you use the app.</p>
@@ -36,10 +36,10 @@
   <h2>Data that stays on your Mac</h2>
   <p>Some information is stored locally on your device so the app can work. It never leaves your Mac unless you explicitly send it:</p>
   <ul>
-    <li><strong>Dictation history</strong> — your past dictations are saved to a local file so you can search and re-copy them. You can delete it at any time.</li>
-    <li><strong>Settings</strong> — your preferences (hotkeys, microphone, mode) are stored in local config files.</li>
-    <li><strong>API keys</strong> — if you use Online mode, your key is stored encrypted in your <strong>macOS Keychain</strong>, never in plain text in the project and never uploaded.</li>
-    <li><strong>Microphone audio</strong> — a short rolling buffer is kept in memory so capture is instant. It is local-only, is never written to disk, and is discarded continuously.</li>
+    <li><strong>Dictation history</strong>: your past dictations are saved to a local file so you can search and re-copy them. You can delete it at any time.</li>
+    <li><strong>Settings</strong>: your preferences (hotkeys, microphone, mode) are stored in local config files.</li>
+    <li><strong>API keys</strong>: if you use Online mode, your key is stored encrypted in your <strong>macOS Keychain</strong>, never in plain text in the project and never uploaded.</li>
+    <li><strong>Microphone audio</strong>: a short rolling buffer is kept in memory so capture is instant. It is local-only, is never written to disk, and is discarded continuously.</li>
   </ul>
 
   <h2>Offline mode (the default)</h2>
@@ -48,18 +48,18 @@
   <h2>Online mode (optional)</h2>
   <p>If you choose Online mode, the app uses <strong>Groq</strong> over an encrypted connection:</p>
   <ul>
-    <li><strong>Dictation</strong> — the audio you record between pressing the key twice is sent to Groq to be transcribed, then the text is returned.</li>
-    <li><strong>AI write/edit</strong> — your spoken instruction, and (only when you ask for it, e.g. "reply to this") the on-screen text you are replying to, are sent to Groq's model to generate the draft.</li>
+    <li><strong>Dictation</strong>: the audio you record between pressing the key twice is sent to Groq to be transcribed, then the text is returned.</li>
+    <li><strong>AI write/edit</strong>: your spoken instruction, and (only when you ask for it, e.g. "reply to this") the on-screen text you are replying to, are sent to Groq's model to generate the draft.</li>
   </ul>
-  <p>Only the content you deliberately dictate or act on is sent — the rolling microphone buffer is never transmitted. This data is handled under <a href="https://groq.com/privacy-policy/">Groq's privacy policy</a>. You provide your own Groq API key, so your usage is governed by your own account with them.</p>
+  <p>Only the content you deliberately dictate or act on is sent, the rolling microphone buffer is never transmitted. This data is handled under <a href="https://groq.com/privacy-policy/">Groq's privacy policy</a>. You provide your own Groq API key, so your usage is governed by your own account with them.</p>
 
   <h2>Third-party services</h2>
   <p>Depending on how you use the app, these third parties may be involved. We do not control them; review their policies:</p>
   <ul>
-    <li><strong>Groq</strong> — cloud transcription and AI writing, only in Online mode.</li>
-    <li><strong>Hugging Face</strong> — hosts the on-device Whisper model, downloaded once for Offline mode.</li>
-    <li><strong>Ollama</strong> — runs the local AI writing model on your Mac (on-device; nothing is sent to Ollama servers for inference).</li>
-    <li><strong>GitHub</strong> — when checking for app updates, the app contacts GitHub to see if a newer version exists. This is a standard software-update check and sends no personal data.</li>
+    <li><strong>Groq</strong>: cloud transcription and AI writing, only in Online mode.</li>
+    <li><strong>Hugging Face</strong>: hosts the on-device Whisper model, downloaded once for Offline mode.</li>
+    <li><strong>Ollama</strong>: runs the local AI writing model on your Mac (on-device; nothing is sent to Ollama servers for inference).</li>
+    <li><strong>GitHub</strong>: when checking for app updates, the app contacts GitHub to see if a newer version exists. This is a standard software-update check and sends no personal data.</li>
   </ul>
 
   <h2>Children</h2>

@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Voice To Text — free, local, private Mac dictation</title>
-<meta name="description" content="A free, local Wispr-Flow alternative for macOS. Dictate and write with AI — 100% on your Mac by default. Two keys do everything.">
+<title>Voice To Text: free, local, private Mac dictation</title>
+<meta name="description" content="A free, local Wispr-Flow alternative for macOS. Dictate and write with AI. 100% on your Mac by default. Two keys do everything.">
 <link rel="stylesheet" href="style.css">
 <style>
 /* ── page-specific ─────────────────────────────────────── */
@@ -12,12 +12,12 @@ section{position:relative;z-index:1}
 .center{text-align:center}
 
 /* HERO */
-.hero{padding:78px 0 34px;text-align:center}
+.hero{padding-top:78px;padding-bottom:34px;text-align:center}
 .hero .badge{display:inline-flex;align-items:center;gap:9px;background:rgba(95,174,116,.1);
   border:1px solid rgba(95,174,116,.28);color:var(--sage);font-size:12.5px;font-weight:600;
   padding:7px 15px;border-radius:30px;margin-bottom:26px}
 .hero .badge .dot{width:7px;height:7px;border-radius:50%;background:var(--sage);box-shadow:0 0 9px var(--sage-deep)}
-.hero h1{font-size:clamp(40px,7vw,76px);line-height:1.02;margin-bottom:22px}
+.hero h1{font-size:clamp(36px,7vw,76px);line-height:1.02;margin-bottom:22px}
 .hero p.sub{font-size:clamp(16px,2.2vw,21px);color:var(--ink-soft);max-width:30ch;margin:0 auto 32px;line-height:1.5}
 .hero .cta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
 .hero .note{margin-top:18px;color:var(--faint);font-size:13px}
@@ -48,7 +48,7 @@ section{position:relative;z-index:1}
 /* generic section heading */
 .shead{text-align:center;max-width:42ch;margin:0 auto 8px}
 .sectop{padding-top:96px}
-.shead h2{font-size:clamp(30px,4.5vw,46px);margin:16px 0 14px}
+.shead h2{font-size:clamp(27px,4.5vw,46px);margin:16px 0 14px}
 .shead p{color:var(--ink-soft);font-size:17px;line-height:1.6;max-width:48ch;margin:0 auto}
 
 /* ANIMATED KEYBOARD */
@@ -63,10 +63,10 @@ section{position:relative;z-index:1}
   animation:underglow 4s var(--ease) infinite}
 @keyframes underglow{0%,100%{opacity:.5}50%{opacity:.9}}
 .krow{display:flex;gap:6px;justify-content:center}
-.key{flex:1;min-height:52px;border-radius:9px;background:linear-gradient(180deg,#2a2419,#19150e);
+.key{flex:1;min-width:0;overflow:hidden;min-height:52px;border-radius:9px;background:linear-gradient(180deg,#2a2419,#19150e);
   border:1px solid rgba(255,255,255,.06);border-bottom:2px solid rgba(0,0,0,.55);
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
-  font-size:11px;color:var(--muted);font-weight:600}
+  font-size:11px;color:var(--muted);font-weight:600;white-space:nowrap}
 .key small{font-size:8.5px;color:var(--faint);letter-spacing:.04em}
 .key.space{flex:4}.key.wide{flex:1.25}
 .key.opt{color:var(--ink)}.key.opt .g{font-size:17px;line-height:1}
@@ -80,6 +80,18 @@ section{position:relative;z-index:1}
 .kbd .hint div{flex:1;text-align:center;font-size:12.5px;color:var(--muted)}
 .kbd .hint b{display:block;font-size:13.5px;margin-bottom:2px}
 .kbd .hint .l b{color:var(--blue)}.kbd .hint .r b{color:var(--amber-hi)}
+@media (max-width:560px){
+  .kbd{margin-top:34px}
+  .kbd .deck{padding:11px 9px;border-radius:14px}
+  .krow{gap:4px}
+  .key{min-height:42px;font-size:9px;border-radius:7px}
+  .key small{display:none}
+  .key.opt .g{font-size:15px}
+  .kbd .hint{margin-top:16px;gap:10px}
+  .kbd .hint div{font-size:11px}
+  .demo .body{padding:24px 20px 28px}
+  .demo .typed{font-size:16px}
+}
 
 /* TWO KEYS */
 .keys{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:30px}
@@ -194,7 +206,7 @@ section{position:relative;z-index:1}
 <section class="hero wrap">
   <div class="badge"><span class="dot"></span> Free &amp; open-source · Apple Silicon</div>
   <h1>Talk. It <em>types</em>.<br>On your Mac.</h1>
-  <p class="sub">A free, local Wispr-Flow alternative. Two keys do everything — and by default, nothing ever leaves your machine.</p>
+  <p class="sub">A free, local Wispr-Flow alternative. Two keys do everything. By default, nothing ever leaves your machine.</p>
   <div class="cta">
     <a class="btn primary" href="https://github.com/A0339x/local-whisper-flow-mac">Get it free ↗</a>
     <a class="btn ghost" href="#how">See how it works</a>
@@ -216,7 +228,7 @@ section{position:relative;z-index:1}
   <div class="shead">
     <span class="kicker">How it works</span>
     <h2>Two keys do <em>everything</em>.</h2>
-    <p>No menus, no buttons. Tap a key, talk, tap again — your Mac does the rest, instantly.</p>
+    <p>No menus, no buttons. Tap a key, talk, tap again. Your Mac does the rest, instantly.</p>
   </div>
 
   <!-- animated keyboard: the two Option keys press in turn -->
@@ -243,7 +255,7 @@ section{position:relative;z-index:1}
     <div class="keycard dictate">
       <div class="cap">⌥ Right Option</div>
       <h3>Dictate</h3>
-      <p>Tap it, talk, tap again. Your words appear <b>wherever your cursor is</b> — any app, fast and accurate.</p>
+      <p>Tap it, talk, tap again. Your words appear <b>wherever your cursor is</b>. Any app, fast and accurate.</p>
     </div>
     <div class="keycard write">
       <div class="cap">⌥ Left Option</div>
@@ -271,7 +283,7 @@ section{position:relative;z-index:1}
   <div class="shead">
     <span class="kicker">Private by default</span>
     <h2>Your voice, your <em>choice</em>.</h2>
-    <p>Run it 100% on your Mac, or flip to the cloud for speed — switch anytime from the menu bar.</p>
+    <p>Run it 100% on your Mac, or flip to the cloud for speed. Switch anytime from the menu bar.</p>
   </div>
   <div class="modes">
     <div class="mode off">
@@ -280,12 +292,12 @@ section{position:relative;z-index:1}
       <ul>
         <li>Whisper transcription on Apple Silicon</li>
         <li>Local AI writing (gpt-oss:20b)</li>
-        <li>Works on a plane — nothing is uploaded</li>
+        <li>Works on a plane, nothing uploaded</li>
       </ul>
     </div>
     <div class="mode on">
       <div class="h"><b>Online</b><span class="pill">🔵 Optional</span></div>
-      <p>Runs on Groq's cloud — fast on any Mac, no downloads. One free key.</p>
+      <p>Runs on Groq's cloud, fast on any Mac, no downloads. One free key.</p>
       <ul>
         <li>Whisper-large-v3 dictation</li>
         <li>Sharper AI writing (gpt-oss-120b)</li>
@@ -304,7 +316,7 @@ section{position:relative;z-index:1}
       <div class="base"></div>
     </div>
     <h3>Nothing leaves your Mac.</h3>
-    <p>In Offline mode your voice never touches the internet — it's transcribed and written <span class="mark">entirely on your device</span>. No accounts, no analytics, no tracking, ever.</p>
+    <p>In Offline mode your voice never touches the internet. It's transcribed and written <span class="mark">entirely on your device</span>. No accounts, no analytics, no tracking, ever.</p>
   </div>
 </section>
 
@@ -315,11 +327,11 @@ section{position:relative;z-index:1}
     <h2>Small app. Big <em>craft</em>.</h2>
   </div>
   <div class="feat">
-    <div class="fcard"><span class="ic">⚡</span><h4>Fast &amp; faithful</h4><p>Raw, accurate dictation in well under a second — no waiting, no robotic over-cleaning.</p></div>
+    <div class="fcard"><span class="ic">⚡</span><h4>Fast &amp; faithful</h4><p>Raw, accurate dictation in well under a second. No waiting, no robotic over-cleaning.</p></div>
     <div class="fcard"><span class="ic">🍎</span><h4>Menu-bar native</h4><p>Lives quietly in your menu bar. A floating waveform shows it's listening. No Dock clutter.</p></div>
     <div class="fcard"><span class="ic">🧠</span><h4>Context-aware AI</h4><p>The Write key matches each app's tone and even reads the on-screen thread to draft real replies.</p></div>
-    <div class="fcard"><span class="ic">🕘</span><h4>Local history</h4><p>Every dictation is saved on your Mac — search it, copy it back, never lose a thought.</p></div>
-    <div class="fcard"><span class="ic">🔑</span><h4>Keychain-secured</h4><p>Any API keys live encrypted in your macOS Keychain — never in the project, never uploaded.</p></div>
+    <div class="fcard"><span class="ic">🕘</span><h4>Local history</h4><p>Every dictation is saved on your Mac. Search it, copy it back, never lose a thought.</p></div>
+    <div class="fcard"><span class="ic">🔑</span><h4>Keychain-secured</h4><p>Any API keys live encrypted in your macOS Keychain, never in the project, never uploaded.</p></div>
     <div class="fcard"><span class="ic">🆓</span><h4>Free forever</h4><p>Open-source, no subscription. Offline mode costs nothing to run. Yours to tweak.</p></div>
   </div>
 </section>
@@ -329,13 +341,13 @@ section{position:relative;z-index:1}
   <div class="shead">
     <span class="kicker">Get started</span>
     <h2>Running in a <em>minute</em>.</h2>
-    <p>Two ways in — no terminal required if you'd rather not.</p>
+    <p>Two ways in. No terminal required if you'd rather not.</p>
   </div>
   <div class="install">
     <div class="icard">
       <div class="n">Easiest</div>
       <h3>Ask Claude to install it</h3>
-      <p>Have Claude Code or the Claude desktop app? Give it one line and it does everything — tools, models, app, login.</p>
+      <p>Have Claude Code or the Claude desktop app? Give it one line and it does everything: tools, models, app, login.</p>
       <div class="code"><span class="c"># paste into Claude</span><br>Clone and install github.com/A0339x/local-whisper-flow-mac</div>
     </div>
     <div class="icard">
@@ -393,7 +405,7 @@ section{position:relative;z-index:1}
 // Animated transcription demo: waveform "listens", then text types out, loops.
 const PHRASES=[
   "Let's grab coffee Thursday around ten.",
-  "Reply to Jake — I'll send the deck tonight.",
+  "Reply to Jake, I'll send the deck tonight.",
   "Add oat milk, sourdough, and blueberries.",
   "Draft a quick thank-you to the whole team."
 ];
@@ -420,9 +432,9 @@ typeLoop();
 
 // AI rewrite morph: cycle say→get pairs with a fade.
 const PAIRS=[
-  ["make this friendlier","Hey! Hope you're doing well — just wanted to check in. 😊"],
+  ["make this friendlier","Hey! Hope you're doing well, just wanted to check in. 😊"],
   ["turn into bullet points","• Ship the build\n• Email the client\n• Book the room"],
-  ["reply that I'm running late","Hi — running about 10 minutes behind, see you shortly!"],
+  ["reply that I'm running late","Hi, running about 10 minutes behind, see you shortly!"],
   ["fix the grammar","Their results were better than ours this quarter."]
 ];
 const ms=document.getElementById('morphSay'), mg=document.getElementById('morphGet');
