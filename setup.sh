@@ -1,9 +1,10 @@
 #!/bin/bash
 # One-command setup for Voice-To-Text on a fresh Mac.
 # Run from inside the project folder:  ./setup.sh
-# It ASKS which edition you want — no config editing required:
-#   • Local  — 100% private, on-device (Whisper + Ollama). Needs model downloads.
-#   • Cloud  — runs on any Apple-Silicon Mac, no downloads. Needs Groq + OpenAI keys.
+# It ASKS which mode you want — no config editing required:
+#   • Offline — 100% private, on-device (Whisper + Ollama). Needs model downloads.
+#   • Online  — AssemblyAI streaming dictation + Groq writing. Runs on any
+#              Apple-Silicon Mac, no downloads. Needs a free AssemblyAI + Groq key.
 set -e
 cd "$(dirname "$0")"
 PROJECT="$(pwd)"
@@ -52,8 +53,8 @@ if [ -z "$EDITION" ]; then
     echo "Which mode do you want?"
     echo "  [1] Offline  — 100% on your Mac. Private, NO API key, works without"
     echo "                 internet. Dictation + AI writing run on-device.  (default)"
-    echo "  [2] Online   — Groq cloud for both. Faster on any Mac, no downloads."
-    echo "                 Needs a free Groq key (console.groq.com)."
+    echo "  [2] Online   — AssemblyAI streaming dictation + Groq AI writing. Fast on"
+    echo "                 any Mac, no downloads. Needs a free AssemblyAI + Groq key."
     echo "  You can switch anytime later in the app (menu ▸ Offline mode)."
     read -r -p "── Choose 1 or 2 [1]: " ch
     case "$ch" in 2) EDITION=online ;; *) EDITION=offline ;; esac
@@ -63,12 +64,14 @@ echo "── Mode: $EDITION"
 
 mkdir -p "$HOME/.config/voice-to-text"
 GROQ_FILE="$HOME/.config/voice-to-text/groq_key"
+AAI_FILE="$HOME/.config/voice-to-text/assemblyai_key"
 
 if [ "$EDITION" = "online" ]; then
-  # Groq dictation + Groq write. One key, no local models.
+  # AssemblyAI streaming dictation + Groq gpt-oss-120b writing. Two keys, no local models.
+  collect_key AssemblyAI "your key" assemblyai.com "$AAI_FILE"
   collect_key Groq "gsk_…" console.groq.com "$GROQ_FILE"
-  cp config.cloud-full.toml config.local.toml
-  echo "── Enabled Online (Groq cloud) mode."
+  cp config.assemblyai.toml config.local.toml
+  echo "── Enabled Online (AssemblyAI dictation + Groq writing) mode."
 else
   # Offline (default): 100% on-device — local Whisper + local gpt-oss:20b write.
   EDITION=offline
@@ -115,8 +118,8 @@ echo "  Then QUIT and relaunch the app (click \"Voice To Text\")."
 echo ""
 echo "Use it:  Right Option → dictate.   Left Option → AI edit/write."
 case "$EDITION" in
-  online)  echo "🔵 Online: no downloads — first dictation is instant. Only what you dictate is"
-           echo "uploaded. Switch to offline anytime in the app (menu ▸ Offline mode)." ;;
+  online)  echo "🔵 Online: no downloads — dictation streams via AssemblyAI (~40ms), AI writing"
+           echo "via Groq. Only what you dictate is sent. Switch to offline anytime (menu ▸ Offline mode)." ;;
   *)       echo "🟢 Offline: 100% on-device, no keys, no internet. First dictation downloads the"
            echo "Whisper model (~3 GB, once). Switch to online anytime (menu ▸ Offline mode)." ;;
 esac

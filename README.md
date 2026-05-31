@@ -4,8 +4,9 @@
 
 # Voice-To-Text — a local, free Wispr-Flow clone
 
-Dictation that runs **entirely on your Mac**. No cloud, no subscription, no data
-leaving your machine.
+Dictation that runs **entirely on your Mac** by default — no cloud, no
+subscription, nothing leaving your machine. An optional **Online** mode adds
+ultra-fast streaming dictation (AssemblyAI, ~40 ms) when you want it.
 
 ## 🪄 Easiest install — just ask Claude
 
@@ -24,12 +25,12 @@ Apple won't let software toggle those). Then tap **Right Option** and start talk
 
 ---
 
-- 🎙️ **Speech-to-text** — OpenAI **Whisper large-v3**, running via Apple's
-  **MLX** framework (fast on Apple Silicon — transcribes well under real time).
-- 🧠 **Smart formatting** — a local **Ollama** model (`llama3.1:8b`) cleans up the
-  transcript: removes filler ("um", "uh"), fixes punctuation, applies spoken
-  self-corrections ("…milk, *no wait I mean* oat milk" → "oat milk"), and turns
-  enumerations into lists.
+- 🎙️ **Speech-to-text** — **Offline:** OpenAI **Whisper large-v3** via Apple's
+  **MLX** framework (on-device, ~0.3 s). **Online:** **AssemblyAI** Universal-
+  Streaming (~40 ms — words finalize the instant you stop). Same hotkey either way.
+- ⚡ **Raw & fast by design** — dictation pastes the transcription directly (light
+  cleanup only: de-duplication + a hallucination guard), so it's quick and faithful
+  to exactly what you said. Want it polished? Use the **Write key** (below), on demand.
 - 🌊 **Recording HUD** — a floating waveform pill appears while you talk, with a
   ✕ to cancel and a ✓ to confirm (just like Wispr Flow).
 - ⌨️ **Toggle hotkey + auto-paste** — tap a global hotkey to start, tap again to
@@ -47,9 +48,9 @@ Apple won't let software toggle those). Then tap **Right Option** and start talk
     to my manager saying I'll be late", "message Jake to reschedule dinner") and
     the AI drafts it and types it at your cursor — styled to the app
     (professional in Gmail, casual in Slack), with no `[placeholders]` to fill in.
-  - Runs on **Groq `gpt-oss-120b`** (~0.5 s, sharp drafts) in the main editions —
-    one key shared with dictation. A fully-offline mode uses a local model — see
-    [Pick your edition](#pick-your-edition-the-installer-asks--no-config-editing).
+  - Runs on **Groq `gpt-oss-120b`** (~0.5 s, sharp drafts) when a Groq key is set;
+    falls back to a local model (**`gpt-oss:20b`**) otherwise — see
+    [Pick your mode](#pick-your-mode-the-installer-asks--no-config-editing).
 - 🕘 **Dictation history** — every dictation is saved (`history.jsonl`); open the
   history window (Settings ▸ Dictation History…) and double-click any past
   entry to copy it back to the clipboard.
@@ -62,40 +63,37 @@ Apple won't let software toggle those). Then tap **Right Option** and start talk
 
 ---
 
-## Pick your edition (the installer asks — no config editing)
+## Pick your mode (the installer asks — no config editing)
 
-Run `./setup.sh` and it asks which one you want. Both main editions use **Groq
-for the left-Option Write/edit** (`gpt-oss-120b` — OpenAI's open model, much
-sharper than a local 8B) and need just **one free Groq key**. They differ by
-where **dictation** runs:
+Run `./setup.sh` and it asks which mode you want. **Offline is the default and
+what we recommend.** You can switch anytime later from the menu-bar icon (▸ Offline
+mode) or during the first-run setup wizard.
 
-| | **Local** (recommended) | **Cloud** |
+| | **🟢 Offline** (default) | **🔵 Online** |
 |---|---|---|
-| Dictation | Whisper **on-device** | Groq `whisper-large-v3` |
-| Write/edit (left ⌥) | Groq `gpt-oss-120b` | Groq `gpt-oss-120b` |
-| Needs | **one** free Groq key | **one** free Groq key |
-| Hardware | capable Apple-Silicon Mac | **any** Apple-Silicon Mac (no GPU) |
-| Privacy | dictation never leaves the Mac; only Write drafts go to Groq | dictation + Write go to Groq |
-| Downloads | Whisper model (~3 GB, once) | none |
-| Best for | most people | sharing, low-spec machines |
+| Dictation | Whisper **on-device** (~0.3 s) | **AssemblyAI** streaming (~40 ms) |
+| Write/edit (left ⌥) | local **`gpt-oss:20b`** | Groq **`gpt-oss-120b`** (sharper) |
+| Keys needed | **none** | free **AssemblyAI** + **Groq** key |
+| Hardware | 16 GB+ Apple Silicon | **any** Apple-Silicon Mac (no GPU) |
+| Privacy | **100% on-device** — nothing leaves your Mac | dictation → AssemblyAI, writing → Groq |
+| Downloads | Whisper ~3 GB + gpt-oss:20b ~13 GB (once) | none |
+| Best for | privacy, working offline | speed, low-spec / shared machines |
 
-Both run the **same code** — the edition is just config. The installer collects
-the key, writes a gitignored `config.local.toml`, and never commits it. Prefer
-OpenAI or another model? It's OpenAI-compatible — one-line swap in the preset.
+Both modes run the **same code** — the mode is just config. The installer collects
+any keys, writes a gitignored `config.local.toml`, and never commits them. Keys are
+stored in your **macOS Keychain** (encrypted), not in the project.
 
 ```bash
-./setup.sh            # asks: Local or Cloud
-./setup.sh --cloud    # or --local   (non-interactive)
+./setup.sh            # asks: Offline or Online (Offline is the default)
+./setup.sh --online   # or --offline   (non-interactive)
 ```
 
-<details><summary>Fully offline (no keys, no internet)</summary>
-
-Want zero cloud — dictation **and** Write fully on-device? Run
-`./setup.sh --offline`. It installs Ollama and uses **`gpt-oss:20b`** (OpenAI's
-open model, the local twin of the cloud one) for the Write/edit side — genuinely
-sharp drafts at ~2 s, no keys, works on a plane. Needs a 16 GB+ Mac (the model is
-~13 GB); on smaller machines set `model = "qwen2.5:14b"` in `config.toml`. Switch back anytime with `./setup.sh`.
-</details>
+**Online dictation uses AssemblyAI's Universal-Streaming** — it transcribes while
+you talk, so the text lands ~40 ms after you stop (vs ~0.5 s for a batch upload).
+On a real-voice benchmark it matched or beat local Whisper for accuracy. The
+**AI write/edit** side (left ⌥) uses Groq `gpt-oss-120b`; if you skip the Groq key,
+writing falls back to the on-device model. Prefer OpenAI or another writer? It's
+OpenAI-compatible — one-line swap in `config.local.toml`.
 
 ---
 
@@ -104,17 +102,20 @@ sharp drafts at ~2 s, no keys, works on a plane. Needs a 16 GB+ Mac (the model i
 ```bash
 git clone https://github.com/A0339x/local-whisper-flow-mac.git
 cd local-whisper-flow-mac
-./setup.sh          # asks: Local or Cloud?
+./setup.sh          # asks: Offline or Online? (Offline is the default)
 ```
 
 `setup.sh` installs `uv` + Ollama, pulls the model, builds the app, and (optionally)
-adds it to `/Applications` + login. Requires an **Apple Silicon Mac** (M1–M5) and
-~8 GB free for the models.
+adds it to `/Applications` + login. Requires an **Apple Silicon Mac** (M1–M5);
+Offline mode needs ~16 GB free for the two on-device models.
 
-On first launch a short **setup wizard** walks you through the permissions and
-does a quick voice calibration (read a sentence in your normal voice, then an
-excited one) so excitement detection is tuned to you. You can re-run it anytime
-from the menu (**Setup / Onboarding…**). (See the [ask-Claude install](#-easiest-install--just-ask-claude-code) at the top for the no-terminal path.)
+On first launch a polished **setup wizard** walks you through the three macOS
+permissions (with live green checkmarks as you grant each), lets you pick
+**Offline or Online** (and pastes any keys into the macOS Keychain), choose your
+two hotkeys, and download the on-device models with a live progress bar. You can
+re-run it anytime from the menu (**Setup / Onboarding…**). (See the
+[ask-Claude install](#-easiest-install--just-ask-claude-code) at the top for the
+no-terminal path.)
 
 ---
 
@@ -215,10 +216,11 @@ Edit **`config.toml`** and relaunch.
 
 - **`[hotkey] combo`** — the trigger. Examples: `"<cmd>+<shift>+<space>"`,
   `"<f9>"`, `"<ctrl>+<alt>+d"`.
-- **`[transcription] model`** — any `mlx-community/whisper-*` model.
+- **`[transcription] backend`** — `"local"` (Whisper/MLX), `"assemblyai"` (streaming),
+  or `"cloud"` (OpenAI-compatible batch). `model` is any `mlx-community/whisper-*`.
 - **`[transcription] language`** — `"en"` (faster) or `""` to auto-detect.
-- **`[formatting]`** — `enabled`, `ollama_url`, and `model` (`llama3.1:8b` for
-  speed, `qwen2.5:32b` for smarter corrections).
+- **`[formatting]`** — the **Write key** model: `ollama_url` + `model` (`gpt-oss:20b`
+  on-device) or `command_base_url` + `command_model` (e.g. Groq `gpt-oss-120b`).
 - **`[paste]`** — `auto_paste` and `restore_clipboard`.
 - **`[sounds]`** — start/stop/cancel audio cues.
 
@@ -227,10 +229,14 @@ Edit **`config.toml`** and relaunch.
 ## How it works
 
 ```
+DICTATE (Right ⌥):
 hotkey ─▶ AudioRecorder (sounddevice, 16 kHz mono) ──▶ live level ─▶ waveform HUD
-        └▶ Whisper large-v3-turbo  (mlx_whisper.transcribe)   ── local, GPU/ANE
-           └▶ llama3.1:8b           (Ollama /api/chat)         ── local
-              └▶ pbcopy + Cmd+V into the focused app
+        └▶ Offline: Whisper large-v3 (mlx_whisper)        ── on-device, GPU/ANE
+           Online:  AssemblyAI Universal-Streaming        ── websocket, ~40 ms
+              └▶ light cleanup ─▶ pbcopy + Cmd+V into the focused app
+
+WRITE / EDIT (Left ⌥):
+spoken instruction ─▶ gpt-oss:20b (local) or Groq gpt-oss-120b ─▶ typed at cursor
 ```
 
 The HUD is a non-activating Cocoa `NSPanel`, so clicking ✕/✓ never steals focus
