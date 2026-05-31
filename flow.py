@@ -1720,6 +1720,98 @@ def transcribe_remote(audio: np.ndarray, base_url: str, model: str, api_key: str
         return {"text": resp.text.strip()}
 
 
+def _f32_to_pcm16(audio: np.ndarray) -> bytes:
+    """Float32 [-1,1] mono → 16-bit little-endian PCM bytes (what AAI expects)."""
+    return (np.clip(audio, -1.0, 1.0) * 32767.0).astype("<i2").tobytes()
+
+
+class AssemblyAIStream:
+    """Real-time streaming transcription over AssemblyAI's v3 Universal-Streaming
+    websocket. Audio is pushed while you talk; on stop we force the endpoint and
+    the final transcript comes back in ~40ms (vs ~500ms for a batch upload).
+
+    The app uses ONLY the final transcript (pasted once at stop) — the live
+    partials are internal, for the latency win. Falls back to local/batch on any
+    error so dictation never breaks."""
+
+    URL = ("wss://streaming.assemblyai.com/v3/ws?sample_rate={sr}&encoding=pcm_s16le"
+           "&format_turns=true&speech_model={model}")
+
+    def __init__(self, api_key: str, model: str = "universal-streaming-english",
+                 sample_rate: int = SAMPLE_RATE) -> None:
+        self._key = api_key
+        self._url = self.URL.format(sr=sample_rate, model=model)
+        self._ws = None
+        self._turns: dict[int, str] = {}
+        self._begun = threading.Event()
+        self._final = threading.Event()
+        self._t0 = None
+        self._alive = False
+
+    def start(self) -> None:
+        import websocket  # websocket-client; lazy so offline users never need it
+        self._abnf = websocket.ABNF
+        self._ws = websocket.create_connection(
+            self._url, header=[f"Authorization: {self._key}"], timeout=10)
+        self._alive = True
+        threading.Thread(target=self._reader, daemon=True).start()
+        if not self._begun.wait(timeout=6):
+            raise RuntimeError("AssemblyAI stream did not start (no Begin)")
+
+    def _reader(self) -> None:
+        self._ws.settimeout(20)
+        while self._alive:
+            try:
+                msg = self._ws.recv()
+            except Exception:
+                break
+            if not msg:
+                break
+            try:
+                d = json.loads(msg)
+            except Exception:
+                continue
+            t = d.get("type")
+            if t == "Begin":
+                self._begun.set()
+            elif "turn_order" in d:
+                self._turns[d["turn_order"]] = d.get("transcript", "")
+                if d.get("end_of_turn") and self._t0 is not None:
+                    self._final.set()
+            elif t == "Termination":
+                self._final.set()
+                break
+
+    def send(self, pcm16: bytes) -> None:
+        if not self._alive or not pcm16:
+            return
+        try:
+            # ~100ms frames keep messages within AssemblyAI's size window.
+            for i in range(0, len(pcm16), 3200):
+                self._ws.send(pcm16[i:i + 3200], opcode=self._abnf.OPCODE_BINARY)
+        except Exception:
+            self._alive = False
+
+    def finish(self, timeout: float = 4.0) -> str:
+        """Force the endpoint and return the full (joined) transcript."""
+        self._t0 = time.perf_counter()
+        try:
+            self._ws.send(json.dumps({"type": "ForceEndpoint"}))
+        except Exception:
+            pass
+        self._final.wait(timeout=timeout)
+        self.close()
+        return " ".join(self._turns[k] for k in sorted(self._turns)).strip()
+
+    def close(self) -> None:
+        self._alive = False
+        try:
+            if self._ws is not None:
+                self._ws.close()
+        except Exception:
+            pass
+
+
 def transcript_with_paragraphs(result: dict, pause_seconds: float) -> str:
     """Join Whisper segments, inserting a paragraph break on long spoken pauses."""
     segments = result.get("segments") or []
@@ -2808,7 +2900,7 @@ class FlowApp(rumps.App):
         Write (no command_base_url)."""
         t = self.cfg.get("transcription", {})
         f = self.cfg.get("formatting", {})
-        return (t.get("backend", "local").lower() != "cloud"
+        return (t.get("backend", "local").lower() not in ("cloud", "assemblyai")
                 and not (f.get("command_base_url") or "").strip())
 
     def _mode_labels(self) -> dict:
@@ -3135,6 +3227,8 @@ class FlowApp(rumps.App):
         with self._lock:
             if self.state != RECORDING:
                 return
+            self._streaming_active = False
+            self._cancel_aai()
             self.recorder.stop()
             AppHelper.callAfter(self.hud.hide)
             if self.cfg["sounds"]["enabled"]:
@@ -3158,6 +3252,68 @@ class FlowApp(rumps.App):
             return None
         return (base, tcfg.get("cloud_model") or "whisper-large-v3", key)
 
+    def _streaming_stt(self):
+        """Return an AssemblyAI key if backend = 'assemblyai' and a key is found,
+        else None. This enables real-time streaming dictation (lowest latency)."""
+        tcfg = self.cfg["transcription"]
+        if (tcfg.get("backend") or "local").lower() != "assemblyai":
+            return None
+        key = _resolve_api_key(tcfg.get("assemblyai_api_key_env", "ASSEMBLYAI_API_KEY"),
+                               tcfg.get("assemblyai_api_key_file", ""))
+        if not key:
+            log("  AssemblyAI backend set but no key found — falling back to local Whisper")
+            return None
+        return key
+
+    def _start_aai_stream(self, key: str):
+        """Open an AssemblyAI stream + a sender thread that pushes mic audio in
+        real-time. Returns the stream, or None on failure (→ caller falls back)."""
+        model = self.cfg["transcription"].get("assemblyai_model", "universal-streaming-english")
+        try:
+            stream = AssemblyAIStream(key, model)
+            stream.start()
+        except Exception as e:
+            log(f"  AssemblyAI stream failed to start: {e} — falling back to local")
+            return None
+        self._aai_sent = 0
+        self._aai_active = True
+        self._aai = stream
+        self._aai_thread = threading.Thread(target=self._aai_sender, daemon=True)
+        self._aai_thread.start()
+        log("  ☁️ AssemblyAI streaming active")
+        return stream
+
+    def _aai_sender(self) -> None:
+        """Push newly-captured audio to AssemblyAI ~12x/sec while recording."""
+        while self._aai_active:
+            audio = self.recorder.snapshot()
+            if self._aai is not None and audio.size > self._aai_sent:
+                self._aai.send(_f32_to_pcm16(audio[self._aai_sent:]))
+                self._aai_sent = audio.size
+            time.sleep(0.08)
+
+    def _finish_aai(self, audio: np.ndarray) -> str:
+        """Stop the sender, flush the trailing tail, force the endpoint, return text."""
+        self._aai_active = False
+        th = getattr(self, "_aai_thread", None)
+        if th is not None:
+            th.join(timeout=1.0)
+        stream = getattr(self, "_aai", None)
+        self._aai = None
+        if stream is None:
+            return ""
+        tail = audio[getattr(self, "_aai_sent", 0):]
+        if tail.size:
+            stream.send(_f32_to_pcm16(tail))
+        return stream.finish()
+
+    def _cancel_aai(self) -> None:
+        self._aai_active = False
+        stream = getattr(self, "_aai", None)
+        self._aai = None
+        if stream is not None:
+            stream.close()
+
     def _begin_recording(self) -> None:
         # Play the start cue FIRST — the moment you press the key — before any
         # work, so it feels instant. (afplay is non-blocking.)
@@ -3178,11 +3334,17 @@ class FlowApp(rumps.App):
         self._target_app = ("", "", "")
         self._context_terms = []
         threading.Thread(target=self._capture_context, daemon=True).start()
+        # AssemblyAI streaming (online): push audio live so the final transcript
+        # lands ~40ms after you stop. Pasted once at stop, like all dictation.
+        self._aai = None
+        aai_key = self._streaming_stt()
+        if aai_key:
+            self._start_aai_stream(aai_key)
         # Streaming: transcribe finished chunks at pauses while you talk, so
         # stopping leaves almost nothing left to do. (Local-only; cloud STT uploads
         # the whole clip at stop instead.)
-        self._streaming = self._cloud_stt() is None and bool(
-            self.cfg["transcription"].get("streaming", True))
+        self._streaming = (self._aai is None and self._cloud_stt() is None
+                           and bool(self.cfg["transcription"].get("streaming", True)))
         self._stream_committed = ""
         self._stream_commit_n = 0
         self._stream_thread = None
@@ -3282,10 +3444,13 @@ class FlowApp(rumps.App):
                 log(f"  context captured: {len(self._command_context)} chars")
             threading.Thread(target=_grab_context, daemon=True).start()
         # Stream the spoken instruction the same way dictation does, so a longer
-        # instruction is mostly transcribed by the time you tap to stop. (Local
-        # only; cloud STT uploads the whole clip at stop.)
-        self._streaming = self._cloud_stt() is None and bool(
-            self.cfg["transcription"].get("streaming", True))
+        # instruction is mostly transcribed by the time you tap to stop.
+        self._aai = None
+        aai_key = self._streaming_stt()
+        if aai_key:
+            self._start_aai_stream(aai_key)
+        self._streaming = (self._aai is None and self._cloud_stt() is None
+                           and bool(self.cfg["transcription"].get("streaming", True)))
         self._stream_committed = ""
         self._stream_commit_n = 0
         self._stream_thread = None
@@ -3311,8 +3476,11 @@ class FlowApp(rumps.App):
                 return
             tcfg = self.cfg["transcription"]
             model, lang, gloss = tcfg["model"], tcfg["language"], tcfg.get("vocabulary", "")
-            cloud = self._cloud_stt()
-            if cloud:
+            aai = getattr(self, "_aai", None)
+            cloud = None if aai is not None else self._cloud_stt()
+            if aai is not None:
+                instruction = self._finish_aai(audio)
+            elif cloud:
                 base_url, cmodel, key = cloud
                 instruction = (transcribe_remote(audio, base_url, cmodel, key, lang, gloss)
                                .get("text") or "").strip()
@@ -3402,7 +3570,8 @@ class FlowApp(rumps.App):
         No-op once the key is in the Keychain (and for the offline edition)."""
         fcfg = self.cfg.get("formatting", {})
         tcfg = self.cfg.get("transcription", {})
-        for kf in {fcfg.get("command_api_key_file", ""), tcfg.get("cloud_api_key_file", "")}:
+        for kf in {fcfg.get("command_api_key_file", ""), tcfg.get("cloud_api_key_file", ""),
+                   tcfg.get("assemblyai_api_key_file", "")}:
             kf = (kf or "").strip()
             if not kf:
                 continue
@@ -3480,8 +3649,13 @@ class FlowApp(rumps.App):
             if ctx:
                 glossary = (glossary + ", " + ", ".join(ctx)).strip(", ")
             tone_cfg = self.cfg.get("tone", {})
-            cloud = self._cloud_stt()
-            if cloud:
+            aai = getattr(self, "_aai", None)
+            cloud = None if aai is not None else self._cloud_stt()
+            if aai is not None:
+                self.status_item.title = "Transcribing…"
+                text = self._finish_aai(audio)
+                log(f"  transcript (AssemblyAI streaming): {text!r}")
+            elif cloud:
                 base_url, cmodel, key = cloud
                 self.status_item.title = "Transcribing…"
                 text = (transcribe_remote(audio, base_url, cmodel, key, lang, glossary)

@@ -1,0 +1,17 @@
+# ── ASSEMBLYAI-STREAMING edition preset ──────────────────────────────────────
+# Dictation → AssemblyAI Universal-Streaming (real-time; final lands ~40ms after
+# you stop). Write/Command → Groq gpt-oss-120b. Two keys, no local models.
+#   cp config.assemblyai.toml config.local.toml
+#   printf 'AAI_KEY'  > ~/.config/voice-to-text/assemblyai_key && chmod 600 ~/.config/voice-to-text/assemblyai_key
+#   printf 'gsk_KEY'  > ~/.config/voice-to-text/groq_key       && chmod 600 ~/.config/voice-to-text/groq_key
+# config.local.toml is gitignored and deep-merges over config.toml, so keys never
+# get committed. Only your actual dictations are streamed; the warm mic is local.
+
+[transcription]
+backend = "assemblyai"      # real-time streaming dictation
+
+[formatting]
+command_base_url = "https://api.groq.com/openai/v1"   # Write via Groq gpt-oss-120b
+command_model = "openai/gpt-oss-120b"
+command_api_key_env = "GROQ_API_KEY"
+command_api_key_file = "~/.config/voice-to-text/groq_key"

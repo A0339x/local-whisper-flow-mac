@@ -31,10 +31,19 @@ preroll_seconds = 0.5
 input_device = "builtin"
 
 [transcription]
-# Transcription backend: "local" (Whisper via Apple MLX, on-device — needs Apple
-# Silicon) or "cloud" (an OpenAI-compatible /audio/transcriptions endpoint — runs
-# on ANY machine, no GPU). Local is the default and is fastest on a powerful Mac.
+# Transcription backend:
+#   "local"      — Whisper via Apple MLX, on-device (needs Apple Silicon). Default.
+#   "cloud"      — an OpenAI-compatible /audio/transcriptions endpoint (Groq
+#                  whisper-large-v3). Batch: uploads the clip at stop (~0.5s).
+#   "assemblyai" — real-time streaming (Universal-Streaming). Pushes audio while
+#                  you talk; final transcript lands ~40ms after you stop. Lowest
+#                  latency. Cloud only; needs a free AssemblyAI key (see below).
 backend = "local"
+# AssemblyAI streaming (backend = "assemblyai"). Get a key at assemblyai.com:
+#   printf 'KEY' > ~/.config/voice-to-text/assemblyai_key && chmod 600 ~/.config/voice-to-text/assemblyai_key
+assemblyai_api_key_env = "ASSEMBLYAI_API_KEY"
+assemblyai_api_key_file = "~/.config/voice-to-text/assemblyai_key"
+assemblyai_model = "universal-streaming-english"
 # Cloud STT (used only when backend = "cloud"). Groq serves the EXACT
 # whisper-large-v3 over an OpenAI-compatible API — very fast + cheap (~$0.0019/min).
 # Get a key at console.groq.com, then:
