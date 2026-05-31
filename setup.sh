@@ -9,14 +9,13 @@ cd "$(dirname "$0")"
 PROJECT="$(pwd)"
 echo "── Setting up Voice-To-Text in: $PROJECT"
 
-# Flags: --local / --cloud pick the edition non-interactively; --yes / -y is
-# unattended (defaults to local unless --cloud is also given).
+# Flags: --offline / --online pick the mode non-interactively; --yes / -y is
+# unattended (defaults to OFFLINE — private, no key).
 AUTO=0; EDITION=""
 for a in "$@"; do case "$a" in
   --yes|-y) AUTO=1 ;;
-  --local) EDITION=local ;;
-  --cloud) EDITION=cloud ;;
   --offline) EDITION=offline ;;
+  --online|--cloud) EDITION=online ;;
 esac; done
 
 # Collect an API key into a 0600 file (skip if already present).
@@ -44,59 +43,46 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 export PATH="$HOME/.local/bin:$PATH"
 
-# ── Pick the edition ──────────────────────────────────────────────────────────
-# Write/Command mode runs on Groq's gpt-oss-120b in the two main editions
-# (sharper than the local 8B). They differ by DICTATION: on-device Whisper vs
-# cloud Groq. Both need just ONE free Groq key. --offline is the zero-key, fully
-# on-device option (local 8B Write).
+# ── Pick the mode (OFFLINE is the default — private, no key) ───────────────────
 if [ -z "$EDITION" ]; then
   if [ "$AUTO" = "1" ]; then
-    EDITION=local
+    EDITION=offline
   else
     echo ""
-    echo "Which edition do you want?  (both use one free Groq key — console.groq.com)"
-    echo "  [1] Local  — dictation on-device (Whisper) + AI write via Groq (best privacy)."
-    echo "               Your dictation never leaves the Mac; only Write drafts go to Groq."
-    echo "               Recommended."
-    echo "  [2] Cloud  — dictation AND write via Groq. Runs on ANY Apple-Silicon Mac,"
-    echo "               no downloads. Lightest setup."
-    echo "  (100% offline, no key, local 8B write — lower quality: re-run with --offline)"
+    echo "Which mode do you want?"
+    echo "  [1] Offline  — 100% on your Mac. Private, NO API key, works without"
+    echo "                 internet. Dictation + AI writing run on-device.  (default)"
+    echo "  [2] Online   — Groq cloud for both. Faster on any Mac, no downloads."
+    echo "                 Needs a free Groq key (console.groq.com)."
+    echo "  You can switch anytime later in the app (menu ▸ Offline mode)."
     read -r -p "── Choose 1 or 2 [1]: " ch
-    case "$ch" in 2) EDITION=cloud ;; *) EDITION=local ;; esac
+    case "$ch" in 2) EDITION=online ;; *) EDITION=offline ;; esac
   fi
 fi
-echo "── Edition: $EDITION"
+echo "── Mode: $EDITION"
 
 mkdir -p "$HOME/.config/voice-to-text"
 GROQ_FILE="$HOME/.config/voice-to-text/groq_key"
-OPENAI_FILE="$HOME/.config/voice-to-text/openai_key"
 
-if [ "$EDITION" = "cloud" ]; then
-  # Groq dictation + Groq write (gpt-oss-120b). One key, no local models.
+if [ "$EDITION" = "online" ]; then
+  # Groq dictation + Groq write. One key, no local models.
   collect_key Groq "gsk_…" console.groq.com "$GROQ_FILE"
-  [ -s config.local.toml ] && echo "── config.local.toml exists — leaving it (delete to re-pick)." \
-    || { cp config.cloud-full.toml config.local.toml; echo "── Enabled full-cloud edition (Groq)."; }
-
-elif [ "$EDITION" = "offline" ]; then
-  # Fully on-device: local Whisper + local 8B write. No keys. Needs Ollama.
-  [ -f config.local.toml ] && { rm -f config.local.toml; echo "── Removed override (now 100% offline)."; }
+  cp config.cloud-full.toml config.local.toml
+  echo "── Enabled Online (Groq cloud) mode."
+else
+  # Offline (default): 100% on-device — local Whisper + local gpt-oss:20b write.
+  EDITION=offline
+  rm -f config.local.toml          # use the 100%-local base in config.toml
+  echo "── Enabled Offline (on-device) mode."
   if ! command -v ollama >/dev/null 2>&1; then
     if command -v brew >/dev/null 2>&1; then echo "── Installing Ollama…"; brew install ollama
     else echo "✋ Install Ollama from https://ollama.com/download , then re-run."; exit 1; fi
   fi
   curl -s http://localhost:11434/api/tags >/dev/null 2>&1 || { echo "── Starting Ollama…"; (ollama serve >/dev/null 2>&1 &); sleep 2; }
   MODEL=$(awk '/^\[/{s=$0} s=="[formatting]" && /^[[:space:]]*model[[:space:]]*=/{v=$0; sub(/^[^=]*=[[:space:]]*/,"",v); gsub(/"/,"",v); print v; exit}' config.toml)
-  MODEL=${MODEL:-llama3.1:8b}
-  if ollama list 2>/dev/null | awk '{print $1}' | grep -qx "$MODEL"; then echo "── Write model present: $MODEL"
-  else echo "── Pulling the Write model: $MODEL (one time)…"; ollama pull "$MODEL"; fi
-
-else
-  # Local (default): on-device Whisper dictation + Groq write (gpt-oss-120b).
-  # One Groq key, no Ollama.
-  EDITION=local
-  collect_key Groq "gsk_…" console.groq.com "$GROQ_FILE"
-  [ -s config.local.toml ] && echo "── config.local.toml exists — leaving it (delete to re-pick)." \
-    || { cp config.cloud.toml config.local.toml; echo "── Enabled local-dictation + Groq-write edition."; }
+  MODEL=${MODEL:-gpt-oss:20b}
+  if ollama list 2>/dev/null | awk '{print $1}' | grep -qx "$MODEL"; then echo "── On-device Write model present: $MODEL"
+  else echo "── Pulling the on-device Write model: $MODEL (one time, ~13GB)…"; ollama pull "$MODEL"; fi
 fi
 
 # ── Common: deps, build, install ──────────────────────────────────────────────
@@ -129,10 +115,8 @@ echo "  Then QUIT and relaunch the app (click \"Voice To Text\")."
 echo ""
 echo "Use it:  Right Option → dictate.   Left Option → AI edit/write."
 case "$EDITION" in
-  cloud)   echo "Cloud: no downloads — first dictation is instant. Only your dictations are"
-           echo "uploaded. Re-pick anytime: rm config.local.toml && ./setup.sh" ;;
-  offline) echo "Offline: 100% on-device, no keys. First dictation downloads Whisper (~3 GB)."
-           echo "Switch to OpenAI write / cloud: ./setup.sh  (and pick 1 or 2)" ;;
-  *)       echo "Local: dictation on-device (first one downloads Whisper ~3 GB); write via OpenAI."
-           echo "Re-pick anytime: rm config.local.toml && ./setup.sh" ;;
+  online)  echo "🔵 Online: no downloads — first dictation is instant. Only what you dictate is"
+           echo "uploaded. Switch to offline anytime in the app (menu ▸ Offline mode)." ;;
+  *)       echo "🟢 Offline: 100% on-device, no keys, no internet. First dictation downloads the"
+           echo "Whisper model (~3 GB, once). Switch to online anytime (menu ▸ Offline mode)." ;;
 esac

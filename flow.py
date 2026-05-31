@@ -1010,7 +1010,7 @@ class OnboardingController(NSObject):
         fcfg = self._app.cfg.get("formatting", {})
         cloud = tcfg.get("backend", "local").lower() == "cloud"
         needs_key = cloud or bool((fcfg.get("command_base_url") or "").strip())
-        steps = ["welcome", "permissions", "shortcut"]
+        steps = ["welcome", "permissions", "mode", "shortcut"]
         if needs_key:
             steps.append("apikey")
         if not cloud:
@@ -1142,6 +1142,43 @@ class OnboardingController(NSObject):
             NSMakeRect(40, 70, OB_W - 80, 40),
             secondary=True,
         )
+
+    @objc.python_method
+    def _step_mode(self, cv):
+        self._label(cv, "Online or offline?", NSMakeRect(40, OB_H - 62, OB_W - 80, 30), size=22, bold=True)
+        self._label(
+            cv,
+            "Offline keeps everything on your Mac — private, no internet, no API key. "
+            "It’s the default and what we recommend.\n\n"
+            "Online uses Groq’s cloud for both dictation and AI writing — a bit faster, "
+            "runs on any Mac, but needs a free Groq key. You can switch anytime later "
+            "from the menu-bar icon ▸ Offline mode.",
+            NSMakeRect(40, OB_H - 168, OB_W - 80, 92),
+        )
+        off = FirstMouseButton.alloc().initWithFrame_(NSMakeRect(40, OB_H - 214, OB_W - 80, 24))
+        off.setButtonType_(NSButtonTypeSwitch)
+        off.setTitle_("Offline — 100% on-device  (recommended)")
+        off.setState_(1 if self._app._is_offline() else 0)
+        off.setTarget_(self)
+        off.setAction_("modeToggled:")
+        cv.addSubview_(off)
+        self._ob_mode_btn = off
+        self._ob_mode_status = self._label(cv, "", NSMakeRect(40, OB_H - 246, OB_W - 80, 20), secondary=True)
+        self._update_mode_status()
+
+    @objc.python_method
+    def _update_mode_status(self) -> None:
+        if getattr(self, "_ob_mode_status", None) is not None:
+            self._ob_mode_status.setStringValue_(
+                "🟢 Offline — nothing leaves your Mac." if self._app._is_offline()
+                else "🔵 Online — uses Groq's cloud (you'll add a key next).")
+
+    def modeToggled_(self, sender):  # noqa: N802
+        self._app.apply_offline_mode(bool(sender.state()))
+        self._update_mode_status()
+        # The key/download steps depend on the mode — rebuild and re-render.
+        self._steps = self._build_steps()
+        self._render()
 
     @objc.python_method
     def _step_shortcut(self, cv):
