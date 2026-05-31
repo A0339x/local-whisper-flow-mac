@@ -730,6 +730,16 @@ class SettingsController(NSObject):
         hist.setAction_("openHistory:")
         cv.addSubview_(hist)
 
+        # Online / Offline mode toggle + status.
+        off = FirstMouseButton.alloc().initWithFrame_(NSMakeRect(20, 118, 384, 22))
+        off.setButtonType_(NSButtonTypeSwitch)
+        off.setTitle_("Offline mode — 100% on-device, no internet")
+        off.setTarget_(self)
+        off.setAction_("offlineToggled:")
+        cv.addSubview_(off)
+        self._offline_btn = off
+        self._mode_status = label("", NSMakeRect(20, 98, 384, 18), secondary=True)
+
         label(
             "Change: tap a key or press a combo. A combo like ⌥C can also type a\n"
             "character — bare keys or ⌃-combos are cleanest. Open Settings: ⌃⌥⌘M.",
@@ -740,6 +750,20 @@ class SettingsController(NSObject):
 
     def openHistory_(self, sender):  # noqa: N802
         self._app.open_history()
+
+    def offlineToggled_(self, sender):  # noqa: N802
+        self._app.apply_offline_mode(bool(sender.state()))
+
+    @objc.python_method
+    def refresh_mode(self, offline: bool) -> None:
+        """Reflect the current online/offline mode in the Settings window (called
+        from the app when the menu toggle changes it)."""
+        if getattr(self, "_offline_btn", None) is not None:
+            self._offline_btn.setState_(1 if offline else 0)
+        if getattr(self, "_mode_status", None) is not None:
+            self._mode_status.setStringValue_(
+                "Currently: 🔒 Offline — runs entirely on your Mac." if offline
+                else "Currently: ☁️ Online — dictation + writing use Groq (cloud).")
 
     def changeDictation_(self, sender):  # noqa: N802
         self._record("key", self._dict_btn, self._dict_val)
@@ -786,6 +810,7 @@ class SettingsController(NSObject):
         self._warm_btn.setState_(
             1 if self._app.cfg["audio"].get("warm_mic", True) else 0
         )
+        self.refresh_mode(self._app._is_offline())
         self._refresh_shortcuts()
 
     def show(self) -> None:
@@ -2611,10 +2636,20 @@ class FlowApp(rumps.App):
         self.history = HistoryController.alloc().initWithApp_(self)
         self.onboarding = OnboardingController.alloc().initWithApp_(self)
 
+        # Online/Offline mode: a checkable toggle + always-visible indicator lines.
+        _lbls = self._mode_labels()
+        self.mode_item = rumps.MenuItem(_lbls["mode"], callback=None)
+        self.offline_item = rumps.MenuItem("Offline mode (100% on-device)", callback=self.toggle_offline)
+        self.offline_item.state = 1 if _lbls["offline"] else 0
+        self.voice_item = rumps.MenuItem(_lbls["voice"], callback=None)
+        self.writing_item = rumps.MenuItem(_lbls["writing"], callback=None)
+
         self.menu = [
             self.status_item,
+            self.mode_item,
             None,
             rumps.MenuItem("Toggle dictation", callback=lambda _: self.toggle()),
+            self.offline_item,
             rumps.MenuItem("Settings…", callback=self.open_settings),
             rumps.MenuItem("Dictation History…", callback=self.open_history),
             rumps.MenuItem("Setup / Onboarding…", callback=self.open_onboarding),
@@ -2622,10 +2657,8 @@ class FlowApp(rumps.App):
             None,
             rumps.MenuItem(f"Dictate: {KEY_LABELS.get(cfg['hotkey']['key'], cfg['hotkey']['key'])}", callback=None),
             rumps.MenuItem(f"Command Mode: {KEY_LABELS.get(cfg['hotkey'].get('command_key', ''), cfg['hotkey'].get('command_key', '') or 'off')}", callback=None),
-            rumps.MenuItem(
-                f"Whisper: {cfg['transcription']['model'].split('/')[-1]}",
-                callback=None,
-            ),
+            self.voice_item,
+            self.writing_item,
             None,
             rumps.MenuItem("Quit", callback=rumps.quit_application),
         ]
@@ -2724,6 +2757,111 @@ class FlowApp(rumps.App):
         self.cfg["audio"]["warm_mic"] = on
         self._persist("warm_mic", on)
         log(f"warm mic -> {on}")
+
+    # ── Online / Offline mode ─────────────────────────────────────────────────
+    def _is_offline(self) -> bool:
+        """True when NOTHING uses the cloud: on-device dictation AND on-device
+        Write (no command_base_url)."""
+        t = self.cfg.get("transcription", {})
+        f = self.cfg.get("formatting", {})
+        return (t.get("backend", "local").lower() != "cloud"
+                and not (f.get("command_base_url") or "").strip())
+
+    def _mode_labels(self) -> dict:
+        f = self.cfg.get("formatting", {})
+        if self._is_offline():
+            wmodel = (f.get("command_model") or f.get("model") or "local model")
+            return {"offline": True,
+                    "mode": "Mode:  🔒 Offline · on-device",
+                    "voice": "Voice:  on-device Whisper",
+                    "writing": f"Writing:  {wmodel} (on-device)"}
+        wmodel = (f.get("command_model") or "cloud").split("/")[-1]
+        return {"offline": False,
+                "mode": "Mode:  ☁️ Online · cloud (Groq)",
+                "voice": "Voice:  Groq whisper-large-v3",
+                "writing": f"Writing:  {wmodel} (Groq)"}
+
+    def _local_write_ready(self) -> bool:
+        """Is the on-device Write model pulled in Ollama? Best-effort; True if the
+        check can't run (don't block on it)."""
+        f = self.cfg.get("formatting", {})
+        model = (f.get("command_model") or f.get("model") or "").strip()
+        if not model:
+            return False
+        try:
+            url = (f.get("ollama_url") or "http://localhost:11434").rstrip("/")
+            names = [m.get("name", "") for m in requests.get(url + "/api/tags", timeout=2).json().get("models", [])]
+            base = model.split(":")[0]
+            return any(n == model or n.split(":")[0] == base for n in names)
+        except Exception:
+            return True
+
+    def toggle_offline(self, sender) -> None:  # noqa: ANN001  (menu callback)
+        self.apply_offline_mode(not self._is_offline())
+
+    def apply_offline_mode(self, offline: bool) -> None:
+        # Update the live config so it takes effect immediately — no restart.
+        self.cfg.setdefault("transcription", {})["backend"] = "local" if offline else "cloud"
+        f = self.cfg.setdefault("formatting", {})
+        if offline:
+            f["command_base_url"] = ""
+            f["command_model"] = ""
+        else:
+            f["command_base_url"] = "https://api.groq.com/openai/v1"
+            f["command_model"] = "openai/gpt-oss-120b"
+            f["command_api_key_env"] = "GROQ_API_KEY"
+            f["command_api_key_file"] = "~/.config/voice-to-text/groq_key"
+        self._write_mode_config(offline)
+        self._refresh_mode_ui()
+        log(f"mode -> {'offline' if offline else 'online'}")
+        if offline:
+            ready = self._local_write_ready()
+            notify("Voice-To-Text", "🔒 Offline — 100% on your Mac",
+                   "Dictation + AI writing now run on-device, no internet." if ready
+                   else "Heads up: the on-device writing model isn't downloaded — run ./setup.sh --offline.")
+        else:
+            notify("Voice-To-Text", "☁️ Online — cloud (Groq)",
+                   "Dictation + AI writing use Groq for speed.")
+
+    def _write_mode_config(self, offline: bool) -> None:
+        """Persist the mode to the gitignored config.local.toml (it deep-merges
+        over config.toml), so the choice survives a restart. This file holds only
+        the online/offline override."""
+        if offline:
+            content = ("# Personal override (gitignored). Mode: OFFLINE — 100% on-device.\n"
+                       "[transcription]\nbackend = \"local\"\n\n"
+                       "[formatting]\ncommand_base_url = \"\"\ncommand_model = \"\"\n")
+        else:
+            content = ("# Personal override (gitignored). Mode: ONLINE — cloud (Groq).\n"
+                       "[transcription]\nbackend = \"cloud\"\n\n"
+                       "[formatting]\ncommand_base_url = \"https://api.groq.com/openai/v1\"\n"
+                       "command_model = \"openai/gpt-oss-120b\"\n"
+                       "command_api_key_env = \"GROQ_API_KEY\"\n"
+                       "command_api_key_file = \"~/.config/voice-to-text/groq_key\"\n")
+        try:
+            LOCAL_CONFIG_PATH.write_text(content)
+        except Exception as e:
+            log(f"  could not persist mode: {e}")
+
+    def _refresh_mode_ui(self) -> None:
+        lbls = self._mode_labels()
+        for attr, key in (("mode_item", "mode"), ("voice_item", "voice"), ("writing_item", "writing")):
+            it = getattr(self, attr, None)
+            if it is not None:
+                try:
+                    it.title = lbls[key]
+                except Exception:
+                    pass
+        it = getattr(self, "offline_item", None)
+        if it is not None:
+            try:
+                it.state = 1 if lbls["offline"] else 0
+            except Exception:
+                pass
+        try:
+            self.settings.refresh_mode(lbls["offline"])
+        except Exception:
+            pass
 
     @staticmethod
     def _fmt_value(value) -> str:  # noqa: ANN001
