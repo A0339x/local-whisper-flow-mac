@@ -153,7 +153,7 @@ def main():
         pcm = load(p); row = label.ljust(11); details = []
         for name, fn in engines:
             try:
-                h = fn(); e, n = edits(text, h); agg[name][0] += e; agg[name][1] += n
+                h = fn(pcm); e, n = edits(text, h); agg[name][0] += e; agg[name][1] += n
                 row += f"{e/n*100:>11.1f}%"
                 details.append(f"    {name:<11} {h[:88]!r}")
             except Exception as ex:
