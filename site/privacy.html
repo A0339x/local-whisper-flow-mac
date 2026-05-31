@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — Voice To Text</title>
+<meta name="description" content="Voice To Text privacy policy: private by default, nothing leaves your Mac unless you choose Online mode.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav>
+  <div class="bar">
+    <a class="brand" href="index.html"><span class="eq"><i></i><i></i><i></i><i></i><i></i></span> Voice&nbsp;To&nbsp;Text</a>
+    <div class="links">
+      <a href="index.html">Home</a>
+      <a href="terms.html">Terms</a>
+      <a class="gh" href="https://github.com/A0339x/local-whisper-flow-mac">GitHub ↗</a>
+    </div>
+  </div>
+</nav>
+
+<div class="wrap">
+<article class="prose">
+  <h1>Privacy Policy</h1>
+  <div class="updated">Last updated: May 31, 2026</div>
+  <p class="lede">Voice To Text is built privacy-first. By default it runs entirely on your Mac, and it has no servers, no accounts, and no analytics. This page explains exactly what happens to your data — in plain language.</p>
+
+  <div class="callout"><b>The short version:</b> In <b>Offline</b> mode, your voice and text never leave your device. In <b>Online</b> mode, only the audio and instructions you deliberately dictate are sent to Groq to be processed. We never collect, store, sell, or transmit your data to ourselves — there is no "ourselves" to send it to.</div>
+
+  <h2>Who runs this</h2>
+  <p>Voice To Text is free, open-source software that you install and run on your own Mac. There is no company operating a backend service, no user accounts, and no central servers that receive your data. The developers cannot see your dictations, your text, or how you use the app.</p>
+
+  <h2>What we collect</h2>
+  <p><strong>Nothing.</strong> The app contains no analytics, no telemetry, no crash reporting, no advertising identifiers, and no tracking of any kind. We do not know who you are or that you are using the app.</p>
+
+  <h2>Data that stays on your Mac</h2>
+  <p>Some information is stored locally on your device so the app can work. It never leaves your Mac unless you explicitly send it:</p>
+  <ul>
+    <li><strong>Dictation history</strong> — your past dictations are saved to a local file so you can search and re-copy them. You can delete it at any time.</li>
+    <li><strong>Settings</strong> — your preferences (hotkeys, microphone, mode) are stored in local config files.</li>
+    <li><strong>API keys</strong> — if you use Online mode, your key is stored encrypted in your <strong>macOS Keychain</strong>, never in plain text in the project and never uploaded.</li>
+    <li><strong>Microphone audio</strong> — a short rolling buffer is kept in memory so capture is instant. It is local-only, is never written to disk, and is discarded continuously.</li>
+  </ul>
+
+  <h2>Offline mode (the default)</h2>
+  <p>In Offline mode, speech-to-text (OpenAI Whisper via Apple's MLX) and AI writing (a local model via Ollama) run <strong>entirely on your device</strong>. No audio, text, or metadata is transmitted to anyone. It works with no internet connection.</p>
+
+  <h2>Online mode (optional)</h2>
+  <p>If you choose Online mode, the app uses <strong>Groq</strong> over an encrypted connection:</p>
+  <ul>
+    <li><strong>Dictation</strong> — the audio you record between pressing the key twice is sent to Groq to be transcribed, then the text is returned.</li>
+    <li><strong>AI write/edit</strong> — your spoken instruction, and (only when you ask for it, e.g. "reply to this") the on-screen text you are replying to, are sent to Groq's model to generate the draft.</li>
+  </ul>
+  <p>Only the content you deliberately dictate or act on is sent — the rolling microphone buffer is never transmitted. This data is handled under <a href="https://groq.com/privacy-policy/">Groq's privacy policy</a>. You provide your own Groq API key, so your usage is governed by your own account with them.</p>
+
+  <h2>Third-party services</h2>
+  <p>Depending on how you use the app, these third parties may be involved. We do not control them; review their policies:</p>
+  <ul>
+    <li><strong>Groq</strong> — cloud transcription and AI writing, only in Online mode.</li>
+    <li><strong>Hugging Face</strong> — hosts the on-device Whisper model, downloaded once for Offline mode.</li>
+    <li><strong>Ollama</strong> — runs the local AI writing model on your Mac (on-device; nothing is sent to Ollama servers for inference).</li>
+    <li><strong>GitHub</strong> — when checking for app updates, the app contacts GitHub to see if a newer version exists. This is a standard software-update check and sends no personal data.</li>
+  </ul>
+
+  <h2>Children</h2>
+  <p>Voice To Text is a general-purpose productivity tool and is not directed at children under 13. It collects no personal information from anyone.</p>
+
+  <h2>Changes to this policy</h2>
+  <p>If this policy changes, the updated version will be posted here with a new date. Because the app is open-source, you can always inspect exactly what it does in the source code.</p>
+
+  <h2>Contact</h2>
+  <p>Questions or concerns can be raised on the project's <a href="https://github.com/A0339x/local-whisper-flow-mac">GitHub repository</a>.</p>
+
+  <div class="callout"><b>Note:</b> This document is provided for transparency and is not legal advice. If you distribute or sell this software commercially, have a qualified attorney review your privacy practices for your jurisdiction.</div>
+
+  <a class="backlink" href="index.html">← Back to home</a>
+</article>
+</div>
+
+<footer>
+  <div class="wrap">
+    <div class="fine">
+      <span>© 2026 Voice To Text · MIT-licensed open source.</span>
+      <span><a href="terms.html" style="color:var(--muted);text-decoration:none">Terms</a> · <a href="privacy.html" style="color:var(--muted);text-decoration:none">Privacy</a></span>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

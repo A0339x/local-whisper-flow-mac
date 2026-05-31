@@ -1,0 +1,103 @@
+/* Voice To Text — site design system (shared by the one-pager + legal pages).
+   "Late-night studio": warm near-black, film grain, Fraunces display + Hanken
+   Grotesk body, amber (dictation) + sage (privacy) accents. Matches the app's
+   onboarding wizard. */
+@import url("fonts/fonts.css");
+
+:root{
+  --bg:#14110c; --bg-raise:#1c1810; --bg-card:#221d14;
+  --ink:#f2ebdb; --ink-soft:#cabfa8; --muted:#9b917c; --faint:#8f866d;
+  --hair:rgba(242,235,219,.09); --hair-strong:rgba(242,235,219,.16);
+  --amber:#f5b15c; --amber-hi:#ffd9a0; --amber-deep:#d9893a;
+  --sage:#9ed3a6; --sage-deep:#5fae74; --blue:#8fb9f0;
+  --radius:18px; --ease:cubic-bezier(.2,.7,.2,1);
+  --maxw:1080px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:"Hanken Grotesk",system-ui,sans-serif;
+  background:var(--bg); color:var(--ink); line-height:1.6;
+  -webkit-font-smoothing:antialiased; position:relative; overflow-x:hidden;
+}
+/* atmosphere: warm radial glows + film grain */
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(60% 50% at 12% -5%, rgba(245,177,92,.16), transparent 55%),
+    radial-gradient(55% 45% at 100% 8%, rgba(95,174,116,.10), transparent 55%),
+    radial-gradient(70% 60% at 50% 120%, rgba(245,177,92,.06), transparent 60%);}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.05;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+.wrap{position:relative;z-index:1;max-width:var(--maxw);margin:0 auto;padding:0 28px}
+
+/* equalizer brand mark */
+.eq{display:inline-flex;align-items:center;gap:3px;height:24px;vertical-align:middle}
+.eq i{width:3px;border-radius:3px;background:linear-gradient(var(--amber-hi),var(--amber-deep));
+  animation:eq 1.5s var(--ease) infinite}
+.eq i:nth-child(1){height:9px;animation-delay:0s}.eq i:nth-child(2){height:18px;animation-delay:.16s}
+.eq i:nth-child(3){height:24px;animation-delay:.32s}.eq i:nth-child(4){height:13px;animation-delay:.48s}
+.eq i:nth-child(5){height:20px;animation-delay:.64s}
+@keyframes eq{0%,100%{transform:scaleY(.45)}50%{transform:scaleY(1)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+
+/* nav */
+nav{position:sticky;top:0;z-index:20;backdrop-filter:blur(12px);
+  background:rgba(20,17,12,.72);border-bottom:1px solid var(--hair)}
+nav .bar{display:flex;align-items:center;justify-content:space-between;
+  max-width:var(--maxw);margin:0 auto;padding:15px 28px}
+nav .brand{display:flex;align-items:center;gap:10px;font-family:"Fraunces",serif;
+  font-weight:500;font-size:17px;letter-spacing:.2px;color:var(--ink);text-decoration:none}
+nav .links{display:flex;align-items:center;gap:26px}
+nav .links a{color:var(--ink-soft);text-decoration:none;font-size:14px;font-weight:500;transition:color .2s}
+nav .links a:hover{color:var(--ink)}
+nav .links a.gh{color:var(--amber-hi);border:1px solid rgba(245,177,92,.4);
+  padding:7px 15px;border-radius:10px}
+nav .links a.gh:hover{background:rgba(245,177,92,.12)}
+@media (max-width:640px){nav .links a:not(.gh){display:none}}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:9px;font-weight:600;font-size:15px;
+  text-decoration:none;border-radius:12px;padding:13px 24px;transition:all .25s var(--ease);cursor:pointer}
+.btn.primary{background:linear-gradient(180deg,var(--amber-hi),var(--amber-deep));color:#2a1c08;
+  box-shadow:0 4px 22px rgba(245,177,92,.28)}
+.btn.primary:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(245,177,92,.4)}
+.btn.ghost{color:var(--ink);border:1px solid var(--hair-strong)}
+.btn.ghost:hover{background:var(--hair);border-color:var(--ink-soft)}
+
+/* type helpers */
+.kicker{font-size:11.5px;font-weight:700;letter-spacing:.26em;text-transform:uppercase;
+  color:var(--amber);display:inline-flex;align-items:center;gap:10px}
+.kicker::before{content:"";width:26px;height:1.5px;background:linear-gradient(90deg,var(--amber),transparent)}
+h1,h2,h3{font-family:"Fraunces",serif;font-weight:500;letter-spacing:-.4px;line-height:1.05}
+em{font-style:italic;color:var(--amber-hi)}
+
+/* footer */
+footer{position:relative;z-index:1;border-top:1px solid var(--hair);margin-top:90px;padding:44px 0 60px}
+footer .cols{display:flex;flex-wrap:wrap;gap:30px;justify-content:space-between;align-items:flex-start}
+footer .brand{display:flex;align-items:center;gap:10px;font-family:"Fraunces",serif;font-size:17px}
+footer .tag{color:var(--faint);font-size:13px;margin-top:8px;max-width:34ch}
+footer .links{display:flex;gap:40px;flex-wrap:wrap}
+footer .links div b{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);margin-bottom:12px;font-weight:700}
+footer .links a{display:block;color:var(--ink-soft);text-decoration:none;font-size:14px;margin-bottom:9px;transition:color .2s}
+footer .links a:hover{color:var(--amber-hi)}
+footer .fine{margin-top:34px;padding-top:22px;border-top:1px solid var(--hair);
+  color:var(--faint);font-size:12.5px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+
+/* legal-page prose */
+.prose{max-width:760px;margin:0 auto;padding:60px 0 0}
+.prose h1{font-size:40px;margin-bottom:8px}
+.prose .updated{color:var(--faint);font-size:13px;margin-bottom:14px}
+.prose .lede{color:var(--ink-soft);font-size:17px;line-height:1.65;margin-bottom:34px}
+.prose h2{font-family:"Fraunces",serif;font-size:23px;font-weight:500;color:var(--ink);
+  margin:38px 0 12px;padding-top:8px}
+.prose p,.prose li{color:var(--ink-soft);font-size:15.5px;line-height:1.72;margin-bottom:12px}
+.prose ul{padding-left:22px;margin-bottom:14px}
+.prose li{margin-bottom:8px}
+.prose strong{color:var(--ink);font-weight:600}
+.prose a{color:var(--amber-hi);text-decoration:none;border-bottom:1px solid rgba(245,177,92,.3)}
+.prose .callout{background:rgba(95,174,116,.08);border:1px solid rgba(95,174,116,.2);
+  border-radius:14px;padding:16px 20px;margin:22px 0;color:var(--ink-soft);font-size:14.5px}
+.prose .callout b{color:var(--sage)}
+.backlink{display:inline-flex;align-items:center;gap:7px;color:var(--muted);text-decoration:none;
+  font-size:14px;font-weight:600;margin-top:6px}
+.backlink:hover{color:var(--amber-hi)}
