@@ -1067,23 +1067,26 @@ class OnboardingController(NSObject):
     # ── steps ──
     @objc.python_method
     def _step_welcome(self, cv):
-        self._label(cv, "Welcome to Voice To Text", NSMakeRect(40, OB_H - 70, OB_W - 80, 30), size=20, bold=True)
-        body = (
-            "Two keys do everything:\n\n"
-            "RIGHT OPTION (⌥)  —  DICTATE\n"
-            "Tap it, talk, tap again. Your words are typed wherever your cursor is — "
-            "fast and accurate.\n\n"
-            "LEFT OPTION (⌥)  —  AI WRITE & EDIT\n"
-            "Tap it and speak an instruction:\n"
-            "•  With text selected → it rewrites it (“make this friendlier”, “fix the grammar”).\n"
-            "•  With nothing selected → it writes for you (“draft an email saying I’ll be "
-            "late”, “reply to this”).\n\n"
-            "A floating waveform pill appears while recording — ✓ to finish, ✕ to cancel.\n\n"
-            "WARM MIC: to capture instantly, the app keeps your built-in mic active while "
-            "it runs (the orange dot in the menu bar — expected and normal). Change the mic "
-            "or turn it off anytime in Settings."
-        )
-        self._label(cv, body, NSMakeRect(40, 60, OB_W - 80, OB_H - 140))
+        self._label(cv, "Welcome to Voice To Text", NSMakeRect(40, OB_H - 60, OB_W - 80, 30), size=22, bold=True)
+        self._label(cv, "Two keys do everything.", NSMakeRect(40, OB_H - 90, OB_W - 80, 22), secondary=True)
+
+        self._label(cv, "⌥   Right Option  —  Dictate", NSMakeRect(40, OB_H - 138, OB_W - 80, 24), size=16, bold=True)
+        self._label(cv, "Tap it, talk, tap again. Your words type wherever your cursor is — fast and accurate.",
+                    NSMakeRect(58, OB_H - 168, OB_W - 96, 22), secondary=True)
+
+        self._label(cv, "⌥   Left Option  —  AI Write & Edit", NSMakeRect(40, OB_H - 214, OB_W - 80, 24), size=16, bold=True)
+        self._label(cv,
+                    "Tap it and speak an instruction:\n"
+                    "•   Text selected → it rewrites it   (“make this friendlier”, “fix the grammar”)\n"
+                    "•   Nothing selected → it writes for you   (“draft an email…”, “reply to this”)",
+                    NSMakeRect(58, OB_H - 290, OB_W - 96, 66), secondary=True)
+
+        self._label(cv, "A floating waveform pill appears while recording — ✓ to finish, ✕ to cancel.",
+                    NSMakeRect(40, OB_H - 332, OB_W - 80, 22), size=12, secondary=True)
+        self._label(cv,
+                    "Warm mic:  the app keeps your built-in mic active so capture is instant (the orange "
+                    "dot in the menu bar is normal). Change it anytime in Settings.",
+                    NSMakeRect(40, OB_H - 392, OB_W - 80, 50), size=12, secondary=True)
 
     @objc.python_method
     def _step_permissions(self, cv):
@@ -1180,17 +1183,18 @@ class OnboardingController(NSObject):
         else:
             kf = fcfg.get("command_api_key_file", "") or tcfg.get("cloud_api_key_file", "")
         self._ob_key_file = Path(kf).expanduser() if kf else None
-        present = False
-        try:
-            present = bool(self._ob_key_file and self._ob_key_file.read_text().strip())
-        except Exception:
-            present = False
+        self._ob_key_account = self._ob_key_file.name if self._ob_key_file else "groq_key"
+        present = bool(keychain_get(self._ob_key_account))
+        if not present:
+            try:
+                present = bool(self._ob_key_file and self._ob_key_file.read_text().strip())
+            except Exception:
+                present = False
         self._label(
             cv,
             "This edition uses Groq (for transcription and/or AI writing). Get a free "
             "key at console.groq.com — no card needed — then paste it below and Save. "
-            "It’s stored only on this Mac (~/.config/voice-to-text/), never uploaded "
-            "or committed.",
+            "It’s stored encrypted in your macOS Keychain — never uploaded or committed.",
             NSMakeRect(40, OB_H - 150, OB_W - 80, 64),
         )
         self._button(cv, "Open console.groq.com", NSMakeRect(40, OB_H - 196, 220, 30), "openGroq:")
@@ -1214,17 +1218,27 @@ class OnboardingController(NSObject):
             if not key:
                 self._ob_key_status.setStringValue_("Paste a key first.")
                 return
-            if self._ob_key_file is None:
-                self._ob_key_status.setStringValue_("No key file configured for this edition.")
-                return
-            self._ob_key_file.parent.mkdir(parents=True, exist_ok=True)
-            self._ob_key_file.write_text(key)
-            try:
-                os.chmod(self._ob_key_file, 0o600)
-            except Exception:
-                pass
-            self._ob_key_field.setStringValue_("")
-            self._ob_key_status.setStringValue_("✓ Saved. You're all set.")
+            account = getattr(self, "_ob_key_account", "groq_key")
+            if keychain_set(account, key):
+                # Stored in the Keychain — drop any leftover plaintext file.
+                try:
+                    if self._ob_key_file and self._ob_key_file.exists():
+                        self._ob_key_file.unlink()
+                except Exception:
+                    pass
+                self._ob_key_field.setStringValue_("")
+                self._ob_key_status.setStringValue_("✓ Saved securely in your macOS Keychain (encrypted).")
+            elif self._ob_key_file is not None:
+                self._ob_key_file.parent.mkdir(parents=True, exist_ok=True)
+                self._ob_key_file.write_text(key)
+                try:
+                    os.chmod(self._ob_key_file, 0o600)
+                except Exception:
+                    pass
+                self._ob_key_field.setStringValue_("")
+                self._ob_key_status.setStringValue_("✓ Saved (to a protected file).")
+            else:
+                self._ob_key_status.setStringValue_("Could not save the key.")
         except Exception as e:
             self._ob_key_status.setStringValue_(f"Could not save: {e}")
 
@@ -1833,14 +1847,47 @@ unless the instruction says to change it. If the instruction is a transformation
 list…), do exactly that. If it's unclear, make the smallest reasonable edit."""
 
 
-def _resolve_api_key(api_key_env: str, api_key_file: str) -> str:
-    """Find the API key: the configured key FILE first, then the env var.
+KEYCHAIN_SERVICE = "voice-to-text"
 
-    File-first on purpose: the file is the explicit per-app setup the config
-    points to, and the app launches as a GUI process that doesn't see the shell
-    env anyway. A stale/leftover shell env var must never shadow the key file
-    (that caused a 401 when an old GROQ_API_KEY was still exported)."""
+
+def keychain_get(account: str) -> str:
+    """Read a secret from the macOS Keychain (encrypted at rest). '' on any error
+    so callers fall back to file/env."""
+    if not account:
+        return ""
+    try:
+        import keyring
+        return (keyring.get_password(KEYCHAIN_SERVICE, account) or "").strip()
+    except Exception:
+        return ""
+
+
+def keychain_set(account: str, value: str) -> bool:
+    """Store a secret in the macOS Keychain. Returns False on failure (caller can
+    fall back to a 0600 file)."""
+    if not account or not value:
+        return False
+    try:
+        import keyring
+        keyring.set_password(KEYCHAIN_SERVICE, account, value)
+        return True
+    except Exception as e:
+        log(f"  keychain store failed: {e}")
+        return False
+
+
+def _resolve_api_key(api_key_env: str, api_key_file: str) -> str:
+    """Find the API key, most-secure source first: macOS Keychain (encrypted) →
+    the configured key FILE (0600) → the env var.
+
+    File/Keychain before env on purpose: they're the explicit per-app setup the
+    config points to, and the app is a GUI process that doesn't see the shell env
+    anyway — a stale shell var must never shadow them (that once caused a 401)."""
     path = (api_key_file or "").strip()
+    account = Path(path).name if path else ""  # e.g. "groq_key"
+    k = keychain_get(account)
+    if k:
+        return k
     if path:
         try:
             key = Path(path).expanduser().read_text().strip()
@@ -2486,6 +2533,7 @@ class FlowApp(rumps.App):
         super().__init__(GLYPH[IDLE], quit_button=None)
         preload_sounds()  # cue sounds in memory → instant playback
         self.cfg = cfg
+        self._migrate_keys_to_keychain()
         self.state = IDLE
         audio_cfg = cfg.get("audio", {})
         device = resolve_input_device(audio_cfg.get("input_device", "builtin"))
@@ -3108,6 +3156,31 @@ class FlowApp(rumps.App):
         return text
 
     # ── Voice-tone assessment ──
+    def _migrate_keys_to_keychain(self) -> None:
+        """One-time: move any plaintext key FILE into the encrypted Keychain.
+        Runs from the app's own process, so later reads need no permission prompt.
+        No-op once the key is in the Keychain (and for the offline edition)."""
+        fcfg = self.cfg.get("formatting", {})
+        tcfg = self.cfg.get("transcription", {})
+        for kf in {fcfg.get("command_api_key_file", ""), tcfg.get("cloud_api_key_file", "")}:
+            kf = (kf or "").strip()
+            if not kf:
+                continue
+            p = Path(kf).expanduser()
+            account = p.name
+            if keychain_get(account):
+                continue
+            try:
+                key = p.read_text().strip()
+            except Exception:
+                continue
+            if key and keychain_set(account, key):
+                try:
+                    p.unlink()
+                except Exception:
+                    pass
+                log(f"  migrated {account} → macOS Keychain (plaintext file removed)")
+
     def _load_tone_baseline(self) -> dict:
         try:
             return json.loads(TONE_BASELINE_PATH.read_text())
