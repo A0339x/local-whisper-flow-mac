@@ -1821,7 +1821,10 @@ class AssemblyAIStream:
             self.send(b"\x00\x00" * int(self._tail / 1000 * self._sr))
         except Exception:
             pass
-        self._final.wait(timeout=timeout)
+        # If nothing transcribed yet (empty/noise recording — a cough, a false
+        # start), bail fast instead of waiting the full safety timeout. Real
+        # speech always has a turn pending by stop, so it keeps the full window.
+        self._final.wait(timeout=timeout if self._turns else 0.6)
         self.close()
         return " ".join(self._turns[k] for k in sorted(self._turns)).strip()
 
