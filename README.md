@@ -47,10 +47,10 @@ Apple won't let software toggle those). Then tap **Right Option** and start talk
     to my manager saying I'll be late", "message Jake to reschedule dinner") and
     the AI drafts it and types it at your cursor — styled to the app
     (professional in Gmail, casual in Slack), with no `[placeholders]` to fill in.
-  - Uses a stronger model (`qwen2.5:32b`) than dictation for better drafts. To
-    save ~21 GB of RAM, you can optionally point Write/Command mode at an
-    OpenAI-compatible API (`[formatting] command_base_url`) — your dictation still
-    runs 100% locally; only Write-mode text is sent to the API.
+  - **Local edition** runs this on a local model (`llama3.1:8b`, or `qwen2.5:32b`
+    on a powerful Mac). **Cloud edition** runs it on OpenAI (~1-2 s, frees ~21 GB
+    RAM). Dictation stays 100% local either way — see
+    [Local vs cloud edition](#local-vs-cloud-edition).
 - 🕘 **Dictation history** — every dictation is saved (`history.jsonl`); open the
   history window (Settings ▸ Dictation History…) and double-click any past
   entry to copy it back to the clipboard.
@@ -60,6 +60,36 @@ Apple won't let software toggle those). Then tap **Right Option** and start talk
 > proprietary, cloud-only model you cannot download. The open model everyone
 > means by "the large model" is **Whisper** (OpenAI) — and that's exactly what
 > this uses, locally.
+
+---
+
+## Local vs cloud edition
+
+Same app, two ways to run the **left-Option Command/Write** key. **Dictation is
+always 100% local** (Whisper on-device) in both — only the optional Write/Command
+text ever touches the cloud.
+
+| | Local edition (default) | Cloud edition |
+|---|---|---|
+| Write/Command runs on | local Ollama (`llama3.1:8b`) | OpenAI `gpt-4o-mini` |
+| Needs | nothing (works offline) | OpenAI key + internet |
+| Cost | free | ~$0.0002/draft |
+| RAM | uses local model | frees ~21 GB (no local LLM) |
+| Best for | any Mac, full privacy | low-RAM machines, sharpest drafts |
+
+**Local edition** is what you get when you clone — no keys, nothing leaves the
+machine. **To switch to the cloud edition:**
+
+```bash
+cp config.cloud.toml config.local.toml          # the cloud preset
+mkdir -p ~/.config/voice-to-text
+printf 'sk-YOURKEY' > ~/.config/voice-to-text/openai_key && chmod 600 ~/.config/voice-to-text/openai_key
+# restart the app
+```
+
+`config.local.toml` is gitignored and deep-merges over `config.toml`, so your
+cloud settings and key never get committed. Delete it to return to local. (Works
+with any OpenAI-compatible endpoint — OpenAI, OpenRouter, a local server…)
 
 ---
 

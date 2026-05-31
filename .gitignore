@@ -13,5 +13,10 @@ prosody_baseline.json
 .show_settings
 .onboarded
 
+# Personal config override (cloud endpoint, etc.) — deep-merges over config.toml.
+# Keeps the committed config.toml a clean local default; your cloud settings and
+# any keys stay on your machine only.
+config.local.toml
+
 # macOS
 .DS_Store

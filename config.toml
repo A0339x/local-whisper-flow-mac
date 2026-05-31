@@ -70,28 +70,20 @@ ollama_url = "http://localhost:11434"
 # good balance.
 model = "llama3.1:8b"
 # Model for Command/Write mode (editing selected text, drafting emails/messages).
-# This is harder, less latency-sensitive work, so a larger model gives much
-# better instruction-following (fewer placeholders, no meta-commentary). Set to
-# "" to reuse `model` above. qwen2.5:32b is a strong local choice if you have the
-# RAM; it loads on first use (~10s) then stays warm.
-command_model = "gpt-4o-mini"
-# OPTIONAL — offload Command/Write mode to a cloud OpenAI-compatible API so the
-# heavy local model never loads (frees ~21GB of RAM for heavier work). Your
-# DICTATION always stays 100% local; only Write/Command text is sent to the API.
-# To enable OpenAI:
-#   1. command_base_url = "https://api.openai.com/v1"
-#   2. command_model    = "gpt-4o-mini"   (fast + ~$0.0002/draft; or "gpt-4o")
-#   3. Put your key where the app can read it. The app launches as a Login Item
-#      and does NOT see your shell's env, so the easiest path is a key FILE:
-#        mkdir -p ~/.config/voice-to-text
-#        printf 'sk-YOURKEY' > ~/.config/voice-to-text/openai_key
-#        chmod 600 ~/.config/voice-to-text/openai_key
-#      then set command_api_key_file below. (Advanced: `launchctl setenv
-#      OPENAI_API_KEY sk-…` makes the env var visible to GUI apps instead.)
-#   4. Restart the app.
-# Leave command_base_url = "" to stay fully local (default). Works with any
-# OpenAI-compatible endpoint (OpenAI, OpenRouter, a local server, …).
-command_base_url = "https://api.openai.com/v1"
+# Local edition (this committed default) uses a local Ollama model. "" reuses
+# `model` above (llama3.1:8b — runs on modest machines). On a powerful Mac you
+# can set "qwen2.5:32b" for sharper drafts (needs ~21GB RAM; loads on first use).
+command_model = ""
+# ── LOCAL vs CLOUD edition ────────────────────────────────────────────────────
+# This committed config.toml is the 100%-LOCAL edition: clone, run, done — no API
+# key, nothing leaves the machine. To run the CLOUD edition (Write/Command mode on
+# OpenAI: ~1-2s drafts, no local RAM), copy the cloud preset and add your key:
+#     cp config.cloud.toml config.local.toml
+#     mkdir -p ~/.config/voice-to-text
+#     printf 'sk-YOURKEY' > ~/.config/voice-to-text/openai_key && chmod 600 ~/.config/voice-to-text/openai_key
+# config.local.toml is gitignored and DEEP-MERGES over this file, so your cloud
+# settings + key never get committed. Dictation stays 100% local in both editions.
+command_base_url = ""
 command_api_key_env = "OPENAI_API_KEY"
 command_api_key_file = "~/.config/voice-to-text/openai_key"
 

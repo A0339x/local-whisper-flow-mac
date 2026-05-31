@@ -76,11 +76,32 @@ from ApplicationServices import (
 # ── Config ─────────────────────────────────────────────────────────────────────
 
 CONFIG_PATH = Path(__file__).with_name("config.toml")
+# Personal, machine-specific overrides (cloud Write-mode endpoint, etc.) live
+# here and are gitignored — so the committed config.toml stays a clean 100%-local
+# default that anyone cloning the repo gets out of the box.
+LOCAL_CONFIG_PATH = CONFIG_PATH.with_name("config.local.toml")
+
+
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Recursively merge `override` into `base` (override wins); returns base."""
+    for k, v in override.items():
+        if isinstance(v, dict) and isinstance(base.get(k), dict):
+            _deep_merge(base[k], v)
+        else:
+            base[k] = v
+    return base
 
 
 def load_config() -> dict:
     with open(CONFIG_PATH, "rb") as f:
-        return tomllib.load(f)
+        cfg = tomllib.load(f)
+    if LOCAL_CONFIG_PATH.exists():
+        try:
+            with open(LOCAL_CONFIG_PATH, "rb") as f:
+                _deep_merge(cfg, tomllib.load(f))
+        except Exception as e:
+            log(f"  config.local.toml ignored ({e})")
+    return cfg
 
 
 # ── Dictation history ────────────────────────────────────────────────────────
