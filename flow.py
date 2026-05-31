@@ -1990,7 +1990,8 @@ def find_pause(audio: np.ndarray, start: int, sr: int = SAMPLE_RATE,
     return cut if cut - start >= int(min_chunk * sr) else None
 
 
-def transcribe(audio: np.ndarray, model: str, language: str, vocabulary: str = "") -> dict:
+def transcribe(audio: np.ndarray, model: str, language: str, vocabulary: str = "",
+               temperature: float = 0.0) -> dict:
     import mlx_whisper
 
     if audio.size == 0:
@@ -2001,11 +2002,14 @@ def transcribe(audio: np.ndarray, model: str, language: str, vocabulary: str = "
     if vocabulary:
         # Primes the decoder toward these spellings (names, jargon, acronyms).
         opts["initial_prompt"] = f"Glossary: {vocabulary}."
+    if temperature:
+        opts["temperature"] = temperature  # nudge decoding to break a hallucination
     return mlx_whisper.transcribe(audio, path_or_hf_repo=model, **opts)
 
 
 def transcribe_remote(audio: np.ndarray, base_url: str, model: str, api_key: str,
-                      language: str = "", vocabulary: str = "") -> dict:
+                      language: str = "", vocabulary: str = "",
+                      temperature: float = 0.0) -> dict:
     """Transcribe via an OpenAI-compatible /audio/transcriptions endpoint — Groq
     (whisper-large-v3, the exact local model, very fast/cheap) or OpenAI
     (gpt-4o-transcribe). Encodes the float32 clip to a 16-bit WAV in memory and
@@ -2029,6 +2033,8 @@ def transcribe_remote(audio: np.ndarray, base_url: str, model: str, api_key: str
         data["language"] = language
     if vocabulary:
         data["prompt"] = f"Glossary: {vocabulary}."  # OpenAI-compatible biasing
+    if temperature:
+        data["temperature"] = str(temperature)  # break a hallucination on retry
     resp = requests.post(
         f"{base_url.rstrip('/')}/audio/transcriptions",
         headers={"Authorization": f"Bearer {api_key}"},
@@ -4006,6 +4012,53 @@ class FlowApp(rumps.App):
         )
         return excited
 
+    @objc.python_method
+    def _plain_transcribe(self, audio: np.ndarray, temperature: float = 0.0) -> str:
+        """One-shot transcription via the active engine (cloud or local) — used by
+        the hallucination-recovery retry."""
+        if audio.size == 0:
+            return ""
+        tcfg = self.cfg["transcription"]
+        model, lang, glossary = tcfg["model"], tcfg["language"], tcfg.get("vocabulary", "")
+        try:
+            cloud = self._cloud_stt()
+            if cloud:
+                base, cmodel, key = cloud
+                return (transcribe_remote(audio, base, cmodel, key, lang, glossary,
+                                          temperature=temperature).get("text") or "").strip()
+            return (transcribe(audio, model, lang, glossary,
+                               temperature=temperature).get("text") or "").strip()
+        except Exception as e:
+            log(f"  retry transcribe error: {e}")
+            return ""
+
+    @objc.python_method
+    def _speech_chunks(self, audio: np.ndarray) -> list:
+        """Split the clip into speech segments at pauses (dropping the silence that
+        triggers Whisper's hallucinations)."""
+        chunks, pos, guard = [], 0, 0
+        while pos < audio.size and guard < 300:
+            guard += 1
+            cut = find_pause(audio, pos)
+            if cut is None or cut <= pos:
+                chunks.append(audio[pos:]); break
+            chunks.append(audio[pos:cut]); pos = cut
+        return [c for c in chunks if c.size and contains_speech(c)]
+
+    @objc.python_method
+    def _retry_transcribe(self, audio: np.ndarray) -> str:
+        """Recover a hallucinated/empty transcript: transcribe speech-only chunks
+        with a temperature bump; fall back to the whole clip hot."""
+        parts = []
+        for chunk in self._speech_chunks(audio):
+            t = collapse_repeats(self._plain_transcribe(chunk, temperature=0.4))
+            if has_lexical_content(t) and not is_hallucination(t):
+                parts.append(t)
+        if parts:
+            return " ".join(parts).strip()
+        whole = collapse_repeats(self._plain_transcribe(audio, temperature=0.6))
+        return whole if (has_lexical_content(whole) and not is_hallucination(whole)) else ""
+
     def _process(self, audio: np.ndarray) -> None:
         try:
             # Skip empty recordings — Whisper hallucinates ("Thanks for
@@ -4054,9 +4107,21 @@ class FlowApp(rumps.App):
             text = collapse_repeats(text)
             text = apply_replacements(text, self.cfg.get("replacements", {}))
             if not has_lexical_content(text) or is_hallucination(text):
-                log("  (hallucination/empty transcript — nothing pasted)")
-                self.set_state(IDLE, "Heard nothing")
-                return
+                # Whisper hallucinated ("Thanks for watching!") or returned nothing —
+                # usually triggered by silence/pauses in the clip. Don't lose your
+                # words: re-transcribe speech-only chunks with a temperature bump.
+                log(f"  hallucination/empty ({text!r}) — re-transcribing to recover")
+                self.set_state(PROCESSING, "Re-transcribing…")
+                recovered = self._retry_transcribe(audio)
+                if has_lexical_content(recovered) and not is_hallucination(recovered):
+                    text = apply_replacements(collapse_repeats(recovered),
+                                              self.cfg.get("replacements", {}))
+                    log(f"  ✓ recovered on retry: {text!r}")
+                else:
+                    log("  retry still empty/hallucination — nothing pasted")
+                    play(SOUND_CANCEL)  # audible cue so you know it dropped
+                    self.set_state(IDLE, "Couldn’t catch that — try again")
+                    return
             # Dictation is raw Whisper output by design — no LLM cleanup, for
             # speed. Polished writing is available on demand via Command/Write
             # mode (left Option).
