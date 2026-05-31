@@ -20,3 +20,7 @@ config.local.toml
 
 # macOS
 .DS_Store
+.gstack/
+
+# Real-voice accuracy test recordings (personal audio)
+experiments/voice_test_recordings/
