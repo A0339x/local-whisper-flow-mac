@@ -1,0 +1,20 @@
+# ── FULL-CLOUD edition preset ─────────────────────────────────────────────────
+# Dictation → Groq whisper-large-v3.  Write/Command mode → OpenAI gpt-4o-mini.
+# NO local models — runs on any Apple-Silicon Mac, no GPU, no big downloads.
+# This is the edition to SHARE: `./setup-cloud.sh` copies it to config.local.toml
+# and collects the two keys for you. To enable it by hand:
+#   cp config.cloud-full.toml config.local.toml
+#   printf 'gsk_YOURKEY' > ~/.config/voice-to-text/groq_key   && chmod 600 ~/.config/voice-to-text/groq_key
+#   printf 'sk-YOURKEY'  > ~/.config/voice-to-text/openai_key && chmod 600 ~/.config/voice-to-text/openai_key
+# config.local.toml is gitignored and deep-merges over config.toml, so keys and
+# personal settings never get committed. Delete config.local.toml to go local.
+#
+# Only your actual dictations (between the two Option taps) are uploaded — the
+# warm mic is local-only and never sent. Get keys: console.groq.com + platform.openai.com.
+
+[transcription]
+backend = "cloud"           # dictation via Groq whisper-large-v3
+
+[formatting]
+command_base_url = "https://api.openai.com/v1"   # Write mode via OpenAI
+command_model = "gpt-4o-mini"

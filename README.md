@@ -63,33 +63,35 @@ Apple won't let software toggle those). Then tap **Right Option** and start talk
 
 ---
 
-## Local vs cloud edition
+## Pick your edition (the installer asks — no config editing)
 
-Same app, two ways to run the **left-Option Command/Write** key. **Dictation is
-always 100% local** (Whisper on-device) in both — only the optional Write/Command
-text ever touches the cloud.
+Run `./setup.sh` and it asks which edition you want:
 
-| | Local edition (default) | Cloud edition |
+| | **Local** | **Cloud** |
 |---|---|---|
-| Write/Command runs on | local Ollama (`llama3.1:8b`) | OpenAI `gpt-4o-mini` |
-| Needs | nothing (works offline) | OpenAI key + internet |
-| Cost | free | ~$0.0002/draft |
-| RAM | uses local model | frees ~21 GB (no local LLM) |
-| Best for | any Mac, full privacy | low-RAM machines, sharpest drafts |
+| Dictation | Whisper on-device | Groq `whisper-large-v3` |
+| Write/Command | local Ollama | OpenAI `gpt-4o-mini` |
+| Needs | ~3 GB model download + Ollama | free Groq + OpenAI keys |
+| Hardware | a capable Apple-Silicon Mac | **any** Apple-Silicon Mac (no GPU) |
+| Privacy | 100% on-device, works offline | only your dictations are uploaded |
+| Cost | free | ~cents/day of use |
+| Best for | privacy purists, offline | sharing, low-spec machines |
 
-**Local edition** is what you get when you clone — no keys, nothing leaves the
-machine. **To switch to the cloud edition:**
+Both run the **same code** — the edition is just config. The installer collects
+any keys, writes a gitignored `config.local.toml`, and never commits your keys.
 
+**Switch editions anytime, no code editing:**
 ```bash
-cp config.cloud.toml config.local.toml          # the cloud preset
-mkdir -p ~/.config/voice-to-text
-printf 'sk-YOURKEY' > ~/.config/voice-to-text/openai_key && chmod 600 ~/.config/voice-to-text/openai_key
-# restart the app
+./setup.sh --cloud     # or --local   (or just ./setup.sh and pick)
 ```
 
-`config.local.toml` is gitignored and deep-merges over `config.toml`, so your
-cloud settings and key never get committed. Delete it to return to local. (Works
-with any OpenAI-compatible endpoint — OpenAI, OpenRouter, a local server…)
+<details><summary>Advanced: a hybrid edition (local dictation + cloud Write)</summary>
+
+If you have a powerful Mac and want local dictation but sharper/RAM-free drafts,
+use `config.cloud.toml` (cloud Write only) instead of the full-cloud preset:
+`cp config.cloud.toml config.local.toml` + an OpenAI key. `config.local.toml`
+deep-merges over `config.toml`; delete it to return to 100% local.
+</details>
 
 ---
 
@@ -98,7 +100,7 @@ with any OpenAI-compatible endpoint — OpenAI, OpenRouter, a local server…)
 ```bash
 git clone https://github.com/A0339x/local-whisper-flow-mac.git
 cd local-whisper-flow-mac
-./setup.sh
+./setup.sh          # asks: Local or Cloud?
 ```
 
 `setup.sh` installs `uv` + Ollama, pulls the model, builds the app, and (optionally)
