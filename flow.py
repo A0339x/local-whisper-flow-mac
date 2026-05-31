@@ -1735,12 +1735,16 @@ class AssemblyAIStream:
     error so dictation never breaks."""
 
     URL = ("wss://streaming.assemblyai.com/v3/ws?sample_rate={sr}&encoding=pcm_s16le"
-           "&format_turns=true&speech_model={model}")
+           "&format_turns=true&speech_model={model}"
+           "&min_end_of_turn_silence_when_confident={eot}")
 
     def __init__(self, api_key: str, model: str = "universal-streaming-english",
-                 sample_rate: int = SAMPLE_RATE) -> None:
+                 sample_rate: int = SAMPLE_RATE, eot_silence_ms: int = 240,
+                 tail_silence_ms: int = 400) -> None:
         self._key = api_key
-        self._url = self.URL.format(sr=sample_rate, model=model)
+        self._sr = sample_rate
+        self._tail = tail_silence_ms
+        self._url = self.URL.format(sr=sample_rate, model=model, eot=eot_silence_ms)
         self._ws = None
         self._turns: dict[int, str] = {}
         self._begun = threading.Event()
@@ -1792,11 +1796,17 @@ class AssemblyAIStream:
         except Exception:
             self._alive = False
 
-    def finish(self, timeout: float = 4.0) -> str:
-        """Force the endpoint and return the full (joined) transcript."""
+    def finish(self, timeout: float = 2.0) -> str:
+        """Finalize and return the full (joined) transcript.
+
+        Send a trailing silence so the model's natural endpointer fires and
+        commits the LAST word. We deliberately do NOT use ForceEndpoint — it
+        truncates at the current processed position and clips your final word.
+        Natural endpointing (with a low silence threshold) returns the complete
+        transcript in ~270ms. `timeout` is just a safety cap."""
         self._t0 = time.perf_counter()
         try:
-            self._ws.send(json.dumps({"type": "ForceEndpoint"}))
+            self.send(b"\x00\x00" * int(self._tail / 1000 * self._sr))
         except Exception:
             pass
         self._final.wait(timeout=timeout)
@@ -3305,7 +3315,10 @@ class FlowApp(rumps.App):
         tail = audio[getattr(self, "_aai_sent", 0):]
         if tail.size:
             stream.send(_f32_to_pcm16(tail))
-        return stream.finish()
+        t0 = time.perf_counter()
+        text = stream.finish()
+        log(f"  AssemblyAI stop→final: {(time.perf_counter() - t0) * 1000:.0f}ms")
+        return text
 
     def _cancel_aai(self) -> None:
         self._aai_active = False
