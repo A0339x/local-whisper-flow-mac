@@ -2151,8 +2151,15 @@ def generate_text(instruction: str, url: str, model: str, style: str = "",
             "the user's own voice. Do NOT adopt the other person's perspective, do "
             "NOT offer things the other person would offer (e.g. don't say \"let me "
             "know if you need more details\" if the other person is the one giving "
-            "the details), and do NOT quote their message back. Just write the "
-            "user's reply. Ignore unrelated UI text, menus, and sidebars.")
+            "the details), and do NOT quote their message back.\n"
+            "CRITICAL: if the user's instruction is vague (just \"reply\"/\"respond\" "
+            "with no specific point to make), write a natural, in-character reply "
+            "that fits the conversation's tone and relationship — usually a brief, "
+            "friendly acknowledgment of what they said. Do NOT invent commitments, "
+            "interest, decisions, agreements, opinions, or \"next steps\" the user "
+            "has not stated (e.g. never say \"I'm on board\", \"I'm in\", or \"let me "
+            "know the next steps\" unless the user told you to). When unsure, keep it "
+            "short, warm, and low-commitment. Ignore unrelated UI text and sidebars.")
     user = f"Write this for me: {instruction}"
     if context:
         user = (f"{user}\n\nThe conversation on screen (both people's messages, mixed):\n"
