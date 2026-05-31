@@ -78,10 +78,12 @@ paragraph_pause_seconds = 1.5
 # Dictation is RAW Whisper output by design (no LLM cleanup) — fast. These
 # settings drive Command/Write mode (left Option) only.
 ollama_url = "http://localhost:11434"
-# Model for cleaning up every dictation (punctuation, filler, self-corrections).
-# This runs on the critical path, so keep it small and fast. llama3.1:8b is a
-# good balance.
-model = "llama3.1:8b"
+# Local model for the OFFLINE edition's Command/Write side (left Option), and the
+# fallback when command_model below is "". gpt-oss:20b (OpenAI's open model — the
+# local twin of the cloud gpt-oss-120b) gives much sharper writing than the old
+# 8B at ~2s, and benchmarked best of the local options. Needs a 16GB+ Mac; for
+# smaller machines use "qwen2.5:14b" (~9GB) or "llama3.1:8b" (~5GB, weaker).
+model = "gpt-oss:20b"
 # Model for Command/Write mode (editing selected text, drafting emails/messages).
 # Local edition (this committed default) uses a local Ollama model. "" reuses
 # `model` above (llama3.1:8b — runs on modest machines). On a powerful Mac you

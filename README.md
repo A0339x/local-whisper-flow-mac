@@ -91,10 +91,10 @@ OpenAI or another model? It's OpenAI-compatible — one-line swap in the preset.
 <details><summary>Fully offline (no keys, no internet)</summary>
 
 Want zero cloud — dictation **and** Write fully on-device? Run
-`./setup.sh --offline`. It installs Ollama and uses a local model
-(`llama3.1:8b`) for the Write/edit side. No keys, works on a plane — but the
-local model's drafts aren't as sharp as OpenAI's, which is why the main
-editions use OpenAI. Switch back anytime with `./setup.sh`.
+`./setup.sh --offline`. It installs Ollama and uses **`gpt-oss:20b`** (OpenAI's
+open model, the local twin of the cloud one) for the Write/edit side — genuinely
+sharp drafts at ~2 s, no keys, works on a plane. Needs a 16 GB+ Mac (the model is
+~13 GB); on smaller machines set `model = "qwen2.5:14b"` in `config.toml`. Switch back anytime with `./setup.sh`.
 </details>
 
 ---
