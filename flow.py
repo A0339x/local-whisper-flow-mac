@@ -974,6 +974,7 @@ class OnboardingController(NSObject):
         self._window = None
         self._web_window = None
         self._webview = None
+        self._goto = None
         self._step = 0
         self._normal_feat = None
         self._excited_feat = None
@@ -1008,6 +1009,13 @@ class OnboardingController(NSObject):
         self._window.center()
         self._window.makeKeyAndOrderFront_(None)
         self._window.orderFrontRegardless()
+
+    @objc.python_method
+    def show_download(self) -> None:
+        """Open the wizard straight to the Voice-model download step (used when you
+        switch to Offline without the on-device models)."""
+        self._goto = "download"
+        self.show()
 
     # ── WebView onboarding (the polished HTML in web/onboarding/) ──
     @objc.python_method
@@ -1162,6 +1170,10 @@ class OnboardingController(NSObject):
         action = str(msg.get("action", ""))
         if action == "ready":
             self._push_state()
+            goto = getattr(self, "_goto", None)
+            if goto:
+                self._goto = None
+                self._eval_js(f"window.flowGoto({json.dumps(goto)})")
         elif action == "openPerm":
             urls = {"mic": "Privacy_Microphone", "acc": "Privacy_Accessibility",
                     "input": "Privacy_ListenEvent"}
@@ -1299,9 +1311,61 @@ class OnboardingController(NSObject):
         self._eval_js("window.flowDownload('whisper', 100, true)")
 
     @objc.python_method
+    @objc.python_method
+    def _ollama_bin(self):
+        import shutil
+        return shutil.which("ollama") or next(
+            (p for p in ("/opt/homebrew/bin/ollama", "/usr/local/bin/ollama") if Path(p).exists()), None)
+
+    @objc.python_method
+    def _ensure_ollama(self) -> bool:
+        """Ensure Ollama is installed + running. Auto-installs via Homebrew when
+        available, else opens ollama.com. Returns True once the API is reachable."""
+        import shutil
+        f = self._app.cfg.get("formatting", {})
+        base = (f.get("ollama_url") or "http://localhost:11434").rstrip("/")
+
+        def reachable():
+            try:
+                requests.get(base + "/api/tags", timeout=2)
+                return True
+            except Exception:
+                return False
+
+        if reachable():
+            return True
+        if self._ollama_bin() is None:
+            if shutil.which("brew"):
+                self._eval_js("window.flowDlStatus('Installing Ollama (one time)…')")
+                try:
+                    subprocess.run(["brew", "install", "ollama"], capture_output=True, timeout=900)
+                except Exception as e:
+                    log(f"  brew install ollama: {e}")
+            if self._ollama_bin() is None:
+                self._eval_js("window.flowDlStatus('Install Ollama from ollama.com, then click Download again.')")
+                try:
+                    subprocess.Popen(["open", "https://ollama.com/download"])
+                except Exception:
+                    pass
+                return False
+        self._eval_js("window.flowDlStatus('Starting Ollama…')")
+        try:
+            subprocess.Popen([self._ollama_bin(), "serve"],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+        for _ in range(20):
+            if reachable():
+                return True
+            time.sleep(1)
+        return reachable()
+
     def _dl_gpt(self) -> None:
         if self._gpt_present():
             self._eval_js("window.flowDownload('gpt', 100, true)")
+            return
+        if not self._ensure_ollama():
+            self._eval_js("window.flowDownload('gpt', 0, false)")
             return
         f = self._app.cfg.get("formatting", {})
         model = (f.get("model") or "gpt-oss:20b")
@@ -3134,6 +3198,7 @@ class FlowApp(rumps.App):
         self.offline_item.state = 1 if _lbls["offline"] else 0
         self.voice_item = rumps.MenuItem(_lbls["voice"], callback=None)
         self.writing_item = rumps.MenuItem(_lbls["writing"], callback=None)
+        self.update_item = rumps.MenuItem("Check for updates", callback=self.do_update)
 
         self.menu = [
             self.status_item,
@@ -3151,10 +3216,12 @@ class FlowApp(rumps.App):
             self.voice_item,
             self.writing_item,
             None,
+            self.update_item,
             rumps.MenuItem("Quit", callback=rumps.quit_application),
         ]
         self._populate_mic_menu()
         self.title = self._menu_glyph(IDLE)  # mode-colored icon from the start
+        threading.Thread(target=self._check_for_updates, daemon=True).start()
 
         # The companion "Settings" app signals us by creating this file.
         self._settings_trigger = CONFIG_PATH.parent / ".show_settings"
@@ -3288,6 +3355,86 @@ class FlowApp(rumps.App):
         except Exception:
             return True
 
+    def _whisper_model_present(self) -> bool:
+        repo = self.cfg.get("transcription", {}).get("model", "mlx-community/whisper-large-v3-mlx")
+        cache = Path.home() / ".cache/huggingface/hub" / ("models--" + repo.replace("/", "--"))
+        try:
+            return cache.exists() and sum(
+                f.stat().st_size for f in cache.rglob("*") if f.is_file()) > 1.0e9
+        except Exception:
+            return False
+
+    def _ollama_model_present(self) -> bool:
+        f = self.cfg.get("formatting", {})
+        model = (f.get("model") or "gpt-oss:20b")
+        try:
+            url = (f.get("ollama_url") or "http://localhost:11434").rstrip("/")
+            names = [m.get("name", "") for m in requests.get(url + "/api/tags", timeout=2).json().get("models", [])]
+            base = model.split(":")[0]
+            return any(n == model or n.split(":")[0] == base for n in names)
+        except Exception:
+            return False  # Ollama not installed/running → not present
+
+    def _offline_models_ready(self) -> bool:
+        return self._whisper_model_present() and self._ollama_model_present()
+
+    # ── Update tracking (notify when the repo has a newer version) ──
+    def _repo_root(self):
+        root = Path(__file__).resolve().parent
+        return root if (root / ".git").exists() else None
+
+    def _check_for_updates(self) -> None:
+        root = self._repo_root()
+        if root is None:
+            return
+        try:
+            subprocess.run(["git", "-C", str(root), "fetch", "--quiet", "origin"],
+                           timeout=25, capture_output=True)
+            r = subprocess.run(["git", "-C", str(root), "rev-list", "--count", "HEAD..@{u}"],
+                               timeout=10, capture_output=True, text=True)
+            behind = int((r.stdout or "0").strip() or "0")
+        except Exception as e:
+            log(f"  update check skipped: {e}")
+            return
+        if behind > 0:
+            self._update_behind = behind
+            def announce():
+                self.update_item.title = f"⬆︎ Update available ({behind}) — click to upgrade"
+                notify("Voice-To-Text", f"Update available — {behind} new change{'s' if behind > 1 else ''}",
+                       "Menu ▸ Update to pull the latest version.")
+            AppHelper.callAfter(announce)
+
+    def do_update(self, _=None) -> None:
+        threading.Thread(target=self._do_update, daemon=True).start()
+
+    def _do_update(self) -> None:
+        root = self._repo_root()
+        if root is None:
+            notify("Voice-To-Text", "Not a git checkout", "Updates only work when run from the cloned repo.")
+            return
+        try:
+            notify("Voice-To-Text", "Updating…", "Pulling the latest version from GitHub.")
+            pull = subprocess.run(["git", "-C", str(root), "pull", "--ff-only"],
+                                  capture_output=True, text=True, timeout=120)
+            if pull.returncode != 0:
+                notify("Voice-To-Text", "Update failed",
+                       (pull.stderr or "Run `git pull` manually.").strip()[:140])
+                return
+            if "Already up to date" in (pull.stdout or ""):
+                notify("Voice-To-Text", "Already up to date", "You're on the latest version.")
+                AppHelper.callAfter(lambda: setattr(self.update_item, "title", "Check for updates"))
+                return
+            try:
+                subprocess.run(["uv", "sync"], cwd=str(root), capture_output=True, timeout=300,
+                               env={**os.environ, "PATH": os.environ.get("PATH", "") + ":" + str(Path.home() / ".local/bin")})
+            except Exception:
+                pass
+            AppHelper.callAfter(lambda: setattr(self.update_item, "title", "Check for updates"))
+            notify("Voice-To-Text", "Updated ✓ — relaunch to apply",
+                   "Quit and reopen Voice To Text to run the new version.")
+        except Exception as e:
+            notify("Voice-To-Text", "Update failed", str(e)[:140])
+
     def toggle_offline(self, sender) -> None:  # noqa: ANN001  (menu callback)
         self.apply_offline_mode(not self._is_offline())
 
@@ -3314,10 +3461,15 @@ class FlowApp(rumps.App):
         self._refresh_mode_ui()
         log(f"mode -> {'offline' if offline else 'online (groq)'}")
         if offline:
-            ready = self._local_write_ready()
-            notify("Voice-To-Text", "🔒 Offline — 100% on your Mac",
-                   "Dictation + AI writing now run on-device, no internet." if ready
-                   else "Heads up: the on-device writing model isn't downloaded — run ./setup.sh --offline.")
+            if self._offline_models_ready():
+                notify("Voice-To-Text", "🔒 Offline — 100% on your Mac",
+                       "Dictation + AI writing now run on-device, no internet.")
+            else:
+                # Switched to offline but the on-device models aren't downloaded
+                # (e.g. you onboarded Online). Open setup to fetch them with progress.
+                notify("Voice-To-Text", "Offline needs a one-time download",
+                       "Opening setup to grab the on-device models…")
+                AppHelper.callAfter(self.onboarding.show_download)
         else:
             notify("Voice-To-Text", "☁️ Online — Groq cloud",
                    "Dictation + AI writing both run on Groq (one key).")

@@ -448,6 +448,8 @@ window.flowDownloadDone=function(){
   const b=document.getElementById('dlBtn'); if(b){ b.textContent='✓ Downloaded'; b.classList.add('granted'); b.disabled=true; }
   const h=document.getElementById('dlHint'); if(h) h.textContent='Both models are on your Mac — you’re fully offline-ready.';
 };
+window.flowDlStatus=function(msg){ const h=document.getElementById('dlHint'); if(h) h.textContent=msg; };
+window.flowGoto=function(key){ const st=steps(); const n=st.indexOf(key); if(n>=0) go(n); };
 
 function setOffline(off){
   offline=off;
