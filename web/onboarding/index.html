@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Voice To Text — Setup</title>
-<!-- Prototype loads fonts from Google; the shipped WebView bundles them locally
-     under a strict CSP (default-src 'none'). See integration notes. -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..600;1,9..144,400&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Strict CSP: no network at all. Fonts/styles/scripts are local; the only
+     channel out is the WebKit message bridge to the app (not a network path). -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; script-src 'self' 'unsafe-inline';">
+<link href="fonts/fonts.css" rel="stylesheet">
 <style>
 :root{
   --bg:#14110c;
@@ -160,6 +160,9 @@ h1 em{font-style:italic;color:var(--amber-hi)}
 .prow .go:hover{background:rgba(245,177,92,.14)}
 .prow .size{font-size:12.5px;font-weight:600;color:var(--ink-soft);font-variant-numeric:tabular-nums;
   white-space:nowrap;background:var(--bg-raise);border:1px solid var(--hair);padding:5px 11px;border-radius:8px}
+.kchip{font-weight:600;font-size:11px;color:var(--muted)}
+.kchip.set{color:var(--sage)}
+button.go{cursor:pointer;font-family:inherit}
 .statusline{margin-top:16px;font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:8px}
 .statusline .b{width:8px;height:8px;border-radius:50%;background:var(--sage);box-shadow:0 0 10px var(--sage-deep)}
 
@@ -253,7 +256,7 @@ button{font-family:inherit;cursor:pointer;border:none;font-size:13.5px;font-weig
   <!-- RIGHT CONTENT -->
   <main class="main">
     <!-- WELCOME -->
-    <section class="step" data-step="0">
+    <section class="step" data-key="welcome">
       <div class="kicker">Welcome</div>
       <h1>Two keys do <em>everything</em>.</h1>
       <p class="lede">No menus, no buttons to hunt for. Tap a key, talk, tap again. Your Mac does the rest — instantly, and in private.</p>
@@ -273,28 +276,28 @@ button{font-family:inherit;cursor:pointer;border:none;font-size:13.5px;font-weig
     </section>
 
     <!-- PERMISSIONS -->
-    <section class="step" data-step="1">
+    <section class="step" data-key="permissions">
       <div class="kicker">One-time setup</div>
       <h1>Three quick <em>permissions</em>.</h1>
       <p class="lede">macOS asks every dictation app for these. Click each, enable “Python” (or this app), and you’re set.</p>
       <div class="content">
         <div class="perm">
-          <div class="prow"><div class="ico">🎙️</div><div class="tx"><b>Microphone</b><span>So it can hear your voice.</span></div><div class="go">Open</div></div>
-          <div class="prow"><div class="ico">♿️</div><div class="tx"><b>Accessibility</b><span>So it can paste with ⌘V.</span></div><div class="go">Open</div></div>
-          <div class="prow"><div class="ico">⌨️</div><div class="tx"><b>Input Monitoring</b><span>So the Option keys work everywhere.</span></div><div class="go">Open</div></div>
+          <div class="prow"><div class="ico">🎙️</div><div class="tx"><b>Microphone</b><span>So it can hear your voice.</span></div><button class="go" data-act="openPerm" data-which="mic">Open</button></div>
+          <div class="prow"><div class="ico">♿️</div><div class="tx"><b>Accessibility</b><span>So it can paste with ⌘V.</span></div><button class="go" data-act="openPerm" data-which="acc">Open</button></div>
+          <div class="prow"><div class="ico">⌨️</div><div class="tx"><b>Input Monitoring</b><span>So the Option keys work everywhere.</span></div><button class="go" data-act="openPerm" data-which="input">Open</button></div>
         </div>
-        <div class="statusline"><span class="b"></span> Accessibility: granted. You may need to relaunch after enabling.</div>
+        <div class="statusline" id="permStatus"><span class="b" style="background:var(--muted);box-shadow:none"></span> Checking Accessibility… you may need to relaunch after enabling.</div>
       </div>
     </section>
 
     <!-- MODE -->
-    <section class="step" data-step="2">
+    <section class="step" data-key="mode">
       <div class="kicker">Choose your mode</div>
       <h1>Private by <em>default</em>.</h1>
-      <p class="lede">Offline keeps everything on your Mac — no internet, no API key. It’s the default and what we recommend. Switch anytime from the menu bar.</p>
+      <p class="lede">Offline keeps everything on your Mac — no internet, no API key. It’s the default and what we recommend. Online uses AssemblyAI for fast dictation plus Groq for writing. Switch anytime from the menu bar.</p>
       <div class="content">
         <div class="modewrap">
-          <div class="switch on" id="modeSwitch">
+          <div class="switch on" id="modeSwitch" data-act="toggleMode">
             <div class="toggle"></div>
             <div class="lab"><b>Offline — 100% on-device</b><span>Recommended · nothing leaves your Mac</span></div>
           </div>
@@ -304,20 +307,34 @@ button{font-family:inherit;cursor:pointer;border:none;font-size:13.5px;font-weig
     </section>
 
     <!-- SHORTCUT -->
-    <section class="step" data-step="3">
+    <section class="step" data-key="shortcut">
       <div class="kicker">Your keys</div>
       <h1>Pick your two <em>keys</em>.</h1>
-      <p class="lede">The Option keys are the defaults — clean and easy to reach. Press “Change” to set your own (a bare key or a ⌃-combo works best).</p>
+      <p class="lede">The Option keys are the defaults — clean and easy to reach. Press “Change”, then press the key you want (a bare key or a ⌃-combo works best).</p>
       <div class="content">
         <div class="keys">
-          <div class="keyset"><b>Dictate</b><div class="bigcap">⌥<small>Right Option</small></div><a class="changelink">Change…</a></div>
-          <div class="keyset"><b>AI Write</b><div class="bigcap">⌥<small>Left Option</small></div><a class="changelink">Change…</a></div>
+          <div class="keyset"><b>Dictate</b><div class="bigcap" id="capDictate">⌥<small id="lblDictate">Right Option</small></div><a class="changelink" data-act="recordKey" data-which="dictate">Change…</a></div>
+          <div class="keyset"><b>AI Write</b><div class="bigcap" id="capCommand">⌥<small id="lblCommand">Left Option</small></div><a class="changelink" data-act="recordKey" data-which="command">Change…</a></div>
         </div>
       </div>
     </section>
 
+    <!-- API KEYS (online) -->
+    <section class="step" data-key="apikey">
+      <div class="kicker">Online keys</div>
+      <h1>Two free <em>keys</em>.</h1>
+      <p class="lede">Online mode streams dictation through AssemblyAI and writes with Groq. Both are free to start, no card. Paste each below — they’re stored encrypted in your macOS Keychain, never uploaded or committed.</p>
+      <div class="content">
+        <div class="perm">
+          <div class="prow"><div class="ico">🎙️</div><div class="tx"><b>AssemblyAI <span id="aaiStatus" class="kchip">— not set</span></b><span>Streaming dictation. Key from assemblyai.com.</span></div><button class="go" data-act="enterKey" data-which="assemblyai">Paste key</button></div>
+          <div class="prow"><div class="ico">🧠</div><div class="tx"><b>Groq <span id="groqStatus" class="kchip">— not set</span></b><span>AI writing (gpt-oss-120b). Key from console.groq.com.</span></div><button class="go" data-act="enterKey" data-which="groq">Paste key</button></div>
+        </div>
+        <div class="modenote online"><span class="tag">🔒 Keychain</span> — keys are entered in a secure macOS prompt and stored encrypted. Nothing is written to the project or sent anywhere but the service you’re calling.</div>
+      </div>
+    </section>
+
     <!-- DOWNLOAD (offline) -->
-    <section class="step" data-step="4">
+    <section class="step" data-key="download">
       <div class="kicker">Almost there</div>
       <h1>Two models, <em>one time</em>.</h1>
       <p class="lede">Offline mode runs both jobs on your Mac, so it uses two models. They download once (~16&nbsp;GB total), then work forever with no internet.</p>
@@ -326,12 +343,12 @@ button{font-family:inherit;cursor:pointer;border:none;font-size:13.5px;font-weig
           <div class="prow"><div class="ico">🎙️</div><div class="tx"><b>Whisper — speech to text</b><span>Your dictation, transcribed on-device.</span></div><div class="size">~3 GB</div></div>
           <div class="prow"><div class="ico">🧠</div><div class="tx"><b>gpt-oss:20b — AI writing &amp; edits</b><span>The Left-Option drafts, served by Ollama.</span></div><div class="size">~13 GB</div></div>
         </div>
-        <div class="modenote offline"><span class="tag">🟢 On-device</span> — the setup script fetches both and installs Ollama (the engine for gpt-oss). Nothing is sent anywhere; it even works on a plane.</div>
+        <div class="modenote offline" id="dlNote"><span class="tag">🟢 On-device</span> — the setup script fetches both and installs Ollama (the engine for gpt-oss). Nothing is sent anywhere; it even works on a plane.</div>
       </div>
     </section>
 
     <!-- DONE -->
-    <section class="step" data-step="5">
+    <section class="step" data-key="done">
       <div class="kicker">You’re ready</div>
       <h1>Go ahead — <em>say something</em>.</h1>
       <div class="content">
@@ -340,7 +357,7 @@ button{font-family:inherit;cursor:pointer;border:none;font-size:13.5px;font-weig
           <div class="recap">
             <div class="r"><span class="ck">✓</span> Tap <b>Right Option</b>, talk, tap again to type it.</div>
             <div class="r"><span class="ck">✓</span> Tap <b>Left Option</b> to write or edit with AI.</div>
-            <div class="r"><span class="ck">✓</span> Everything runs on your Mac — private and free.</div>
+            <div class="r" id="doneMode"><span class="ck">✓</span> Everything runs on your Mac — private and free.</div>
           </div>
         </div>
       </div>
@@ -358,41 +375,101 @@ button{font-family:inherit;cursor:pointer;border:none;font-size:13.5px;font-weig
 </div>
 
 <script>
-const STEPS=[
-  {key:"welcome",label:"Welcome"},
-  {key:"permissions",label:"Permissions"},
-  {key:"mode",label:"Online or offline"},
-  {key:"shortcut",label:"Your keys"},
-  {key:"download",label:"Voice model"},
-  {key:"done",label:"Ready"},
-];
-let i=Math.max(0,Math.min(STEPS.length-1,parseInt(new URLSearchParams(location.search).get('step'))||0));
+const LABELS={welcome:"Welcome",permissions:"Permissions",mode:"Online or offline",
+  shortcut:"Your keys",apikey:"Online keys",download:"Voice model",done:"Ready"};
+let offline=true, i=0;
 const rail=document.getElementById('rail'), prog=document.getElementById('prog');
-STEPS.forEach((s,n)=>{
-  rail.insertAdjacentHTML('beforeend',`<div class="s" data-n="${n}"><span class="dot">${n+1}</span>${s.label}</div>`);
-  prog.insertAdjacentHTML('beforeend',`<i data-n="${n}"></i>`);
-});
+
+function steps(){
+  const s=["welcome","permissions","mode","shortcut"];
+  s.push(offline ? "download" : "apikey");
+  s.push("done");
+  return s;
+}
+function buildRail(){
+  const st=steps(); rail.innerHTML=''; prog.innerHTML='';
+  st.forEach((k,n)=>{
+    rail.insertAdjacentHTML('beforeend',`<div class="s" data-n="${n}"><span class="dot">${n+1}</span>${LABELS[k]}</div>`);
+    prog.insertAdjacentHTML('beforeend',`<i data-n="${n}"></i>`);
+  });
+}
 function render(){
-  document.querySelectorAll('.step').forEach(el=>el.classList.toggle('show',+el.dataset.step===i));
+  const st=steps(); if(i>=st.length) i=st.length-1;
+  const cur=st[i];
+  document.querySelectorAll('.step').forEach(el=>el.classList.toggle('show',el.dataset.key===cur));
   document.querySelectorAll('.steps .s').forEach((el,n)=>{
     el.classList.toggle('active',n===i); el.classList.toggle('done',n<i);
     el.querySelector('.dot').textContent = n<i ? '✓' : n+1;
   });
   document.querySelectorAll('.progress i').forEach((el,n)=>el.classList.toggle('on',n===i));
   document.getElementById('back').style.visibility = i===0?'hidden':'visible';
-  document.getElementById('next').innerHTML = i===STEPS.length-1 ? 'Start dictating ✓' : 'Continue <span class="arr">→</span>';
+  document.getElementById('next').innerHTML = i===st.length-1 ? 'Start dictating ✓' : 'Continue <span class="arr">→</span>';
 }
-document.getElementById('next').onclick=()=>{ if(i<STEPS.length-1){i++;render();} };
-document.getElementById('back').onclick=()=>{ if(i>0){i--;render();} };
-rail.onclick=e=>{const s=e.target.closest('.s'); if(s){i=+s.dataset.n;render();}};
-// mode toggle demo
-const sw=document.getElementById('modeSwitch'), note=document.getElementById('modeNote');
-sw.onclick=()=>{
-  const on=sw.classList.toggle('on');
-  if(on){note.className='modenote offline';note.innerHTML='<span class="tag">🟢 Offline</span> — dictation and AI writing both run on your Mac. No key needed.';}
-  else{note.className='modenote online';note.innerHTML='<span class="tag">🔵 Online</span> — uses Groq’s cloud for speed. You’ll add a free key next.';}
+function go(n){ const st=steps(); i=Math.max(0,Math.min(st.length-1,n)); render(); }
+
+// ── native bridge ──
+function send(obj){
+  try{ if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.flow)
+    window.webkit.messageHandlers.flow.postMessage(obj); }catch(e){}
+}
+document.getElementById('next').onclick=()=>{ const st=steps(); if(i<st.length-1) go(i+1); else send({action:'finish'}); };
+document.getElementById('back').onclick=()=>go(i-1);
+rail.onclick=e=>{const s=e.target.closest('.s'); if(s) go(+s.dataset.n);};
+document.addEventListener('click', e=>{
+  const el=e.target.closest('[data-act]'); if(!el) return;
+  const act=el.dataset.act;
+  if(act==='openPerm') send({action:'openPerm', which:el.dataset.which});
+  else if(act==='recordKey'){ el.textContent='Press a key…'; send({action:'recordKey', which:el.dataset.which}); }
+  else if(act==='enterKey') send({action:'enterKey', which:el.dataset.which});
+  else if(act==='toggleMode'){ setOffline(!offline); send({action:'setOffline', offline:offline}); }
+});
+
+function setOffline(off){
+  offline=off;
+  const sw=document.getElementById('modeSwitch'), note=document.getElementById('modeNote');
+  sw.classList.toggle('on', off);
+  if(off){ note.className='modenote offline'; note.innerHTML='<span class="tag">🟢 Offline</span> — dictation and AI writing both run on your Mac. No key needed.'; }
+  else{ note.className='modenote online'; note.innerHTML='<span class="tag">🔵 Online</span> — AssemblyAI streams your dictation; Groq writes. You’ll add two free keys next.'; }
+  const dm=document.getElementById('doneMode');
+  if(dm) dm.innerHTML = off ? '<span class="ck">✓</span> Everything runs on your Mac — private and free.'
+                            : '<span class="ck">✓</span> Online — AssemblyAI dictation + Groq writing.';
+  buildRail(); render();
+}
+
+// ── native → JS ──
+window.flowInit=function(s){
+  if(typeof s.offline==='boolean') setOffline(s.offline);
+  if(s.dictate){const e=document.getElementById('lblDictate'); if(e) e.textContent=s.dictate;}
+  if(s.command){const e=document.getElementById('lblCommand'); if(e) e.textContent=s.command;}
+  if(typeof s.acc==='boolean') window.flowPerm(s.acc);
+  window.flowKeyStatus('assemblyai', !!s.aai);
+  window.flowKeyStatus('groq', !!s.groq);
 };
+window.flowPerm=function(granted){
+  const el=document.getElementById('permStatus'); if(!el) return;
+  el.innerHTML = granted
+    ? '<span class="b"></span> Accessibility granted.'
+    : '<span class="b" style="background:var(--amber);box-shadow:none"></span> Accessibility not yet granted — enable it, then relaunch.';
+};
+window.flowKeyStatus=function(which, set){
+  const el=document.getElementById(which==='assemblyai'?'aaiStatus':'groqStatus'); if(!el) return;
+  el.textContent = set ? '— set ✓' : '— not set';
+  el.classList.toggle('set', !!set);
+};
+window.flowShortcut=function(which, label){
+  const e=document.getElementById(which==='dictate'?'lblDictate':'lblCommand'); if(e) e.textContent=label;
+  document.querySelectorAll(`[data-act="recordKey"][data-which="${which}"]`).forEach(b=>b.textContent='Change…');
+};
+
+// Browser-preview helpers (ignored inside the app)
+const qp=new URLSearchParams(location.search);
+if(!window.webkit||!window.webkit.messageHandlers){
+  if(qp.get('online')==='1') offline=false;
+}
+buildRail();
+const s0=parseInt(qp.get('step')); if(!isNaN(s0)) i=s0;
 render();
+send({action:'ready'});
 </script>
 </body>
 </html>

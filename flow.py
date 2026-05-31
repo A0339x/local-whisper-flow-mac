@@ -64,8 +64,10 @@ from AppKit import (
     NSProgressIndicator,
     NSWorkspace,
     NSSound,
+    NSAlert,
+    NSAlertFirstButtonReturn,
 )
-from Foundation import NSObject
+from Foundation import NSObject, NSURL
 from PyObjCTools import AppHelper
 from ApplicationServices import (
     AXUIElementCreateApplication,
@@ -956,6 +958,7 @@ class HistoryController(NSObject):
 # ── Onboarding ───────────────────────────────────────────────────────────────
 
 OB_W, OB_H = 580.0, 480.0
+WEB_W, WEB_H = 780.0, 620.0   # WebView onboarding window
 OB_STEPS = ["welcome", "permissions", "shortcut", "calibrate_normal", "calibrate_excited", "download", "done"]
 CALIB_SENTENCE = "“The quick brown fox jumps over the lazy dog.”"
 
@@ -969,6 +972,8 @@ class OnboardingController(NSObject):
             return None
         self._app = app
         self._window = None
+        self._web_window = None
+        self._webview = None
         self._step = 0
         self._normal_feat = None
         self._excited_feat = None
@@ -982,6 +987,10 @@ class OnboardingController(NSObject):
 
     # ── infra ──
     def show(self) -> None:
+        # Prefer the beautiful WebView onboarding; fall back to native AppKit if
+        # WebKit isn't available or the page can't load (dictation still works).
+        if self._show_webview():
+            return
         if self._window is None:
             style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
             win = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
@@ -1000,6 +1009,177 @@ class OnboardingController(NSObject):
         self._window.makeKeyAndOrderFront_(None)
         self._window.orderFrontRegardless()
 
+    # ── WebView onboarding (the polished HTML in web/onboarding/) ──
+    @objc.python_method
+    def _show_webview(self) -> bool:
+        try:
+            from WebKit import (WKWebView, WKWebViewConfiguration,
+                                WKUserContentController, WKWebsiteDataStore)
+        except Exception as e:
+            log(f"  WebKit unavailable — native onboarding ({e})")
+            return False
+        html = Path(__file__).resolve().parent / "web" / "onboarding" / "index.html"
+        if not html.exists():
+            log("  onboarding HTML missing — native onboarding")
+            return False
+        try:
+            if self._web_window is None:
+                style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
+                win = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
+                    NSMakeRect(0, 0, WEB_W, WEB_H), style, NSBackingStoreBuffered, False)
+                win.setTitle_("Voice To Text — Setup")
+                win.setReleasedWhenClosed_(False)
+                win.setLevel_(0)
+                cfg = WKWebViewConfiguration.alloc().init()
+                ucc = WKUserContentController.alloc().init()
+                ucc.addScriptMessageHandler_name_(self, "flow")
+                cfg.setUserContentController_(ucc)
+                try:
+                    cfg.setWebsiteDataStore_(WKWebsiteDataStore.nonPersistentDataStore())
+                except Exception:
+                    pass
+                wv = WKWebView.alloc().initWithFrame_configuration_(
+                    NSMakeRect(0, 0, WEB_W, WEB_H), cfg)
+                win.setContentView_(wv)
+                self._web_window = win
+                self._webview = wv
+            url = NSURL.fileURLWithPath_(str(html))
+            base = NSURL.fileURLWithPath_(str(html.parent))
+            self._webview.loadFileURL_allowingReadAccessToURL_(url, base)
+            self._web_window.setCollectionBehavior_(NSWindowCollectionBehaviorMoveToActiveSpace)
+            NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+            self._web_window.center()
+            self._web_window.makeKeyAndOrderFront_(None)
+            self._web_window.orderFrontRegardless()
+            return True
+        except Exception as e:
+            log(f"  WebView onboarding failed ({e}) — native onboarding")
+            return False
+
+    # WKScriptMessageHandler: JS → Python bridge.
+    def userContentController_didReceiveScriptMessage_(self, ucc, message):  # noqa: N802
+        try:
+            body = message.body()
+            msg = {k: body[k] for k in body} if hasattr(body, "keys") else dict(body)
+            self._handle_bridge(msg)
+        except Exception as e:
+            log(f"  onboarding bridge error: {e}")
+
+    @objc.python_method
+    def _eval_js(self, js: str) -> None:
+        wv = getattr(self, "_webview", None)
+        if wv is None:
+            return
+        AppHelper.callAfter(lambda: wv.evaluateJavaScript_completionHandler_(js, None))
+
+    @objc.python_method
+    def _key_present(self, which: str) -> bool:
+        t = self._app.cfg.get("transcription", {})
+        f = self._app.cfg.get("formatting", {})
+        if which == "assemblyai":
+            acct, kf = "assemblyai_key", t.get("assemblyai_api_key_file", "")
+        else:
+            acct = "groq_key"
+            kf = f.get("command_api_key_file", "") or t.get("cloud_api_key_file", "")
+        if keychain_get(acct):
+            return True
+        try:
+            return bool(kf and Path(kf).expanduser().read_text().strip())
+        except Exception:
+            return False
+
+    @objc.python_method
+    def _acc_granted(self) -> bool:
+        try:
+            import HIServices
+            return bool(HIServices.AXIsProcessTrusted())
+        except Exception:
+            return False
+
+    @objc.python_method
+    def _push_state(self) -> None:
+        h = self._app.cfg.get("hotkey", {})
+        payload = json.dumps({
+            "offline": self._app._is_offline(),
+            "dictate": hotkey_label(h.get("key", "alt_r")),
+            "command": hotkey_label(h.get("command_key", "alt_l")),
+            "acc": self._acc_granted(),
+            "aai": self._key_present("assemblyai"),
+            "groq": self._key_present("groq"),
+        })
+        self._eval_js(f"window.flowInit({payload})")
+
+    @objc.python_method
+    def _handle_bridge(self, msg: dict) -> None:
+        action = str(msg.get("action", ""))
+        if action == "ready":
+            self._push_state()
+        elif action == "openPerm":
+            urls = {"mic": "Privacy_Microphone", "acc": "Privacy_Accessibility",
+                    "input": "Privacy_ListenEvent"}
+            pane = urls.get(str(msg.get("which", "")), "")
+            if pane:
+                subprocess.Popen(["open", f"x-apple.systempreferences:com.apple.preference.security?{pane}"])
+                if msg.get("which") == "acc":
+                    def recheck():
+                        time.sleep(1.0)
+                        self._eval_js(f"window.flowPerm({'true' if self._acc_granted() else 'false'})")
+                    threading.Thread(target=recheck, daemon=True).start()
+        elif action == "setOffline":
+            self._app.apply_offline_mode(bool(msg.get("offline")))
+            self._eval_js(f"window.flowKeyStatus('assemblyai', {'true' if self._key_present('assemblyai') else 'false'})")
+            self._eval_js(f"window.flowKeyStatus('groq', {'true' if self._key_present('groq') else 'false'})")
+        elif action == "recordKey":
+            self._record_key(str(msg.get("which", "")))
+        elif action == "enterKey":
+            self._prompt_key(str(msg.get("which", "")))
+        elif action == "finish":
+            self._finish_webview()
+
+    @objc.python_method
+    def _record_key(self, which: str) -> None:
+        cfgkey = "key" if which == "dictate" else "command_key"
+        default = "alt_r" if which == "dictate" else "alt_l"
+
+        def done(spec, lbl):
+            label = hotkey_label(self._app.cfg.get("hotkey", {}).get(cfgkey, default))
+            self._eval_js(f"window.flowShortcut('{which}', {json.dumps(label)})")
+
+        self._app.record_hotkey(cfgkey, done)
+
+    @objc.python_method
+    def _prompt_key(self, which: str) -> None:
+        label = "AssemblyAI" if which == "assemblyai" else "Groq"
+        acct = "assemblyai_key" if which == "assemblyai" else "groq_key"
+        place = "your AssemblyAI key" if which == "assemblyai" else "gsk_…  (your Groq key)"
+
+        def run():
+            alert = NSAlert.alloc().init()
+            alert.setMessageText_(f"Paste your {label} API key")
+            alert.setInformativeText_("Stored encrypted in your macOS Keychain — never uploaded or committed.")
+            fld = NSSecureTextField.alloc().initWithFrame_(NSMakeRect(0, 0, 320, 24))
+            fld.setPlaceholderString_(place)
+            alert.setAccessoryView_(fld)
+            alert.addButtonWithTitle_("Save")
+            alert.addButtonWithTitle_("Cancel")
+            alert.window().setInitialFirstResponder_(fld)
+            if alert.runModal() == NSAlertFirstButtonReturn:
+                key = (fld.stringValue() or "").strip()
+                if key and keychain_set(acct, key):
+                    self._eval_js(f"window.flowKeyStatus('{which}', true)")
+
+        AppHelper.callAfter(run)
+
+    @objc.python_method
+    def _finish_webview(self) -> None:
+        try:
+            ONBOARDED_PATH.write_text("1")
+        except Exception:
+            pass
+        win = getattr(self, "_web_window", None)
+        if win is not None:
+            AppHelper.callAfter(win.close)
+
     @objc.python_method
     def _build_steps(self) -> list:
         """Onboarding steps, tailored to the edition: the API-key step appears only
@@ -1008,12 +1188,13 @@ class OnboardingController(NSObject):
         excitement feature and are gone.)"""
         tcfg = self._app.cfg.get("transcription", {})
         fcfg = self._app.cfg.get("formatting", {})
-        cloud = tcfg.get("backend", "local").lower() == "cloud"
-        needs_key = cloud or bool((fcfg.get("command_base_url") or "").strip())
+        backend = tcfg.get("backend", "local").lower()
+        online = backend in ("cloud", "assemblyai")  # online dictation = needs key(s)
+        needs_key = online or bool((fcfg.get("command_base_url") or "").strip())
         steps = ["welcome", "permissions", "mode", "shortcut"]
         if needs_key:
             steps.append("apikey")
-        if not cloud:
+        if not online:  # local dictation → download the on-device Whisper model
             steps.append("download")
         steps.append("done")
         return steps
@@ -2938,8 +3119,8 @@ class FlowApp(rumps.App):
                     "writing": f"Writing:  {wmodel} (on-device)"}
         wmodel = (f.get("command_model") or "cloud").split("/")[-1]
         return {"offline": False,
-                "mode": "Mode:  🔵 Online · cloud (Groq)",
-                "voice": "Voice:  Groq whisper-large-v3",
+                "mode": "Mode:  🔵 Online · AssemblyAI + Groq",
+                "voice": "Voice:  AssemblyAI streaming",
                 "writing": f"Writing:  {wmodel} (Groq)"}
 
     def _local_write_ready(self) -> bool:
@@ -2962,7 +3143,12 @@ class FlowApp(rumps.App):
 
     def apply_offline_mode(self, offline: bool) -> None:
         # Update the live config so it takes effect immediately — no restart.
-        self.cfg.setdefault("transcription", {})["backend"] = "local" if offline else "cloud"
+        # Online = AssemblyAI streaming dictation + Groq gpt-oss-120b writing.
+        t = self.cfg.setdefault("transcription", {})
+        t["backend"] = "local" if offline else "assemblyai"
+        if not offline:
+            t.setdefault("assemblyai_api_key_env", "ASSEMBLYAI_API_KEY")
+            t.setdefault("assemblyai_api_key_file", "~/.config/voice-to-text/assemblyai_key")
         f = self.cfg.setdefault("formatting", {})
         if offline:
             f["command_base_url"] = ""
@@ -2974,15 +3160,15 @@ class FlowApp(rumps.App):
             f["command_api_key_file"] = "~/.config/voice-to-text/groq_key"
         self._write_mode_config(offline)
         self._refresh_mode_ui()
-        log(f"mode -> {'offline' if offline else 'online'}")
+        log(f"mode -> {'offline' if offline else 'online (assemblyai)'}")
         if offline:
             ready = self._local_write_ready()
             notify("Voice-To-Text", "🔒 Offline — 100% on your Mac",
                    "Dictation + AI writing now run on-device, no internet." if ready
                    else "Heads up: the on-device writing model isn't downloaded — run ./setup.sh --offline.")
         else:
-            notify("Voice-To-Text", "☁️ Online — cloud (Groq)",
-                   "Dictation + AI writing use Groq for speed.")
+            notify("Voice-To-Text", "☁️ Online — AssemblyAI + Groq",
+                   "Dictation streams via AssemblyAI; AI writing uses Groq.")
 
     def _write_mode_config(self, offline: bool) -> None:
         """Persist the mode to the gitignored config.local.toml (it deep-merges
@@ -2993,8 +3179,9 @@ class FlowApp(rumps.App):
                        "[transcription]\nbackend = \"local\"\n\n"
                        "[formatting]\ncommand_base_url = \"\"\ncommand_model = \"\"\n")
         else:
-            content = ("# Personal override (gitignored). Mode: ONLINE — cloud (Groq).\n"
-                       "[transcription]\nbackend = \"cloud\"\n\n"
+            content = ("# Personal override (gitignored). Mode: ONLINE — AssemblyAI\n"
+                       "# streaming dictation + Groq gpt-oss-120b writing.\n"
+                       "[transcription]\nbackend = \"assemblyai\"\n\n"
                        "[formatting]\ncommand_base_url = \"https://api.groq.com/openai/v1\"\n"
                        "command_model = \"openai/gpt-oss-120b\"\n"
                        "command_api_key_env = \"GROQ_API_KEY\"\n"
