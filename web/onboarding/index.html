@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voice To Text — Setup</title>
+<!-- Prototype loads fonts from Google; the shipped WebView bundles them locally
+     under a strict CSP (default-src 'none'). See integration notes. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..600;1,9..144,400&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#14110c;
+  --bg-raise:#1c1810;
+  --bg-card:#221d14;
+  --ink:#f2ebdb;
+  --ink-soft:#cabfa8;
+  --muted:#9b917c;
+  --faint:#6b6555;
+  --hair:rgba(242,235,219,.09);
+  --hair-strong:rgba(242,235,219,.16);
+  --amber:#f5b15c;
+  --amber-hi:#ffd9a0;
+  --amber-deep:#d9893a;
+  --sage:#9ed3a6;
+  --sage-deep:#5fae74;
+  --blue:#8fb9f0;
+  --radius:16px;
+  --ease:cubic-bezier(.2,.7,.2,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:"Hanken Grotesk",system-ui,sans-serif;
+  background:var(--bg);
+  color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+  overflow:hidden;
+  position:relative;
+}
+/* warm radial glow + grain atmosphere */
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(120% 90% at 14% 0%, rgba(245,177,92,.14), transparent 46%),
+    radial-gradient(90% 80% at 100% 100%, rgba(95,174,116,.10), transparent 50%);
+}
+body::after{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.05;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.shell{
+  position:relative;z-index:1;
+  display:grid;grid-template-columns:226px 1fr;
+  height:100vh;min-height:600px;
+}
+
+/* ── LEFT RAIL ─────────────────────────────────────────── */
+.rail{
+  position:relative;
+  padding:30px 26px;
+  background:linear-gradient(180deg,var(--bg-raise),#16120b);
+  border-right:1px solid var(--hair);
+  display:flex;flex-direction:column;
+}
+.brand{display:flex;align-items:center;gap:11px;margin-bottom:34px}
+.brand .eq{display:flex;align-items:center;gap:3px;height:26px}
+.brand .eq i{
+  width:3px;border-radius:3px;background:linear-gradient(var(--amber-hi),var(--amber-deep));
+  animation:eq 1.5s var(--ease) infinite;
+}
+.brand .eq i:nth-child(1){height:9px;animation-delay:0s}
+.brand .eq i:nth-child(2){height:20px;animation-delay:.18s}
+.brand .eq i:nth-child(3){height:26px;animation-delay:.36s}
+.brand .eq i:nth-child(4){height:14px;animation-delay:.54s}
+.brand .eq i:nth-child(5){height:22px;animation-delay:.72s}
+@keyframes eq{0%,100%{transform:scaleY(.45)}50%{transform:scaleY(1)}}
+.brand .name{font-family:"Fraunces",serif;font-weight:500;font-size:16px;letter-spacing:.2px;line-height:1.05}
+.brand .name small{display:block;font-family:"Hanken Grotesk";font-weight:600;font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--faint);margin-top:3px}
+
+.steps{display:flex;flex-direction:column;gap:2px;margin-top:4px}
+.steps .s{
+  display:flex;align-items:center;gap:12px;
+  padding:9px 10px;border-radius:10px;color:var(--faint);
+  font-size:13px;font-weight:500;letter-spacing:.1px;
+  transition:all .35s var(--ease);position:relative;
+}
+.steps .s .dot{
+  width:22px;height:22px;flex:0 0 22px;border-radius:50%;
+  border:1.5px solid var(--hair-strong);
+  display:grid;place-items:center;font-size:11px;font-weight:700;
+  transition:all .35s var(--ease);
+}
+.steps .s.done{color:var(--ink-soft)}
+.steps .s.done .dot{border-color:var(--sage-deep);background:rgba(95,174,116,.16);color:var(--sage)}
+.steps .s.active{color:var(--ink);background:rgba(245,177,92,.08)}
+.steps .s.active .dot{border-color:var(--amber);background:rgba(245,177,92,.18);color:var(--amber-hi);box-shadow:0 0 0 4px rgba(245,177,92,.07)}
+
+.rail .foot{margin-top:auto;font-size:10.5px;line-height:1.5;color:var(--faint)}
+.rail .foot b{color:var(--sage);font-weight:600}
+
+/* ── RIGHT CONTENT ─────────────────────────────────────── */
+.main{position:relative;display:flex;flex-direction:column;padding:46px 52px 26px}
+.kicker{
+  font-size:10.5px;font-weight:700;letter-spacing:.26em;text-transform:uppercase;
+  color:var(--amber);margin-bottom:14px;display:flex;align-items:center;gap:9px;
+}
+.kicker::before{content:"";width:22px;height:1.5px;background:linear-gradient(90deg,var(--amber),transparent)}
+h1{
+  font-family:"Fraunces",serif;font-weight:500;font-size:34px;line-height:1.04;
+  letter-spacing:-.4px;margin-bottom:14px;
+}
+h1 em{font-style:italic;color:var(--amber-hi)}
+.lede{font-size:14.5px;line-height:1.62;color:var(--ink-soft);max-width:46ch;margin-bottom:26px}
+
+.content{flex:1}
+
+/* key feature cards (welcome) */
+.keycards{display:flex;flex-direction:column;gap:13px;max-width:48ch}
+.kc{
+  display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:start;
+  background:linear-gradient(180deg,var(--bg-card),rgba(34,29,20,.4));
+  border:1px solid var(--hair);border-radius:var(--radius);
+  padding:16px 18px;transition:border-color .3s var(--ease),transform .3s var(--ease);
+}
+.kc:hover{border-color:var(--hair-strong);transform:translateY(-1px)}
+.cap{
+  font-family:"Hanken Grotesk";font-weight:700;font-size:12px;color:var(--ink);
+  background:linear-gradient(180deg,#2b2417,#201a11);
+  border:1px solid var(--hair-strong);border-bottom-width:2.5px;
+  border-radius:9px;padding:7px 11px;min-width:54px;text-align:center;white-space:nowrap;
+  box-shadow:0 2px 0 rgba(0,0,0,.35);
+}
+.kc.dictate .cap{border-color:rgba(245,177,92,.4);color:var(--amber-hi)}
+.kc.write .cap{border-color:rgba(143,185,240,.4);color:var(--blue)}
+.kc h3{font-size:15px;font-weight:600;margin-bottom:4px;letter-spacing:.1px}
+.kc p{font-size:13px;line-height:1.55;color:var(--muted)}
+.kc p b{color:var(--ink-soft);font-weight:600}
+
+.hint{display:flex;align-items:center;gap:9px;margin-top:20px;font-size:12px;color:var(--faint)}
+.hint .pill{display:flex;gap:2.5px;align-items:flex-end;height:13px}
+.hint .pill i{width:2.5px;background:var(--amber);border-radius:2px;animation:eq 1.3s var(--ease) infinite}
+.hint .pill i:nth-child(2){animation-delay:.2s}.hint .pill i:nth-child(3){animation-delay:.4s}.hint .pill i:nth-child(4){animation-delay:.6s}
+
+/* permissions */
+.perm{display:flex;flex-direction:column;gap:11px;max-width:48ch}
+.prow{
+  display:flex;align-items:center;gap:14px;
+  background:var(--bg-card);border:1px solid var(--hair);border-radius:13px;padding:13px 15px;
+}
+.prow .ico{width:36px;height:36px;flex:0 0 36px;border-radius:10px;display:grid;place-items:center;font-size:17px;
+  background:rgba(245,177,92,.12);border:1px solid rgba(245,177,92,.25)}
+.prow .tx{flex:1}
+.prow .tx b{font-size:13.5px;font-weight:600;display:block}
+.prow .tx span{font-size:12px;color:var(--muted)}
+.prow .go{font-size:12px;font-weight:600;color:var(--amber);border:1px solid rgba(245,177,92,.35);
+  padding:6px 12px;border-radius:8px;white-space:nowrap;transition:all .25s}
+.prow .go:hover{background:rgba(245,177,92,.14)}
+.statusline{margin-top:16px;font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.statusline .b{width:8px;height:8px;border-radius:50%;background:var(--sage);box-shadow:0 0 10px var(--sage-deep)}
+
+/* mode switch */
+.modewrap{max-width:46ch}
+.switch{
+  display:flex;align-items:center;gap:16px;padding:18px 20px;border-radius:var(--radius);
+  background:var(--bg-card);border:1px solid var(--hair-strong);margin-bottom:14px;
+  transition:all .4s var(--ease);
+}
+.switch.on{border-color:rgba(95,174,116,.5);background:linear-gradient(180deg,rgba(95,174,116,.1),var(--bg-card))}
+.toggle{
+  width:52px;height:30px;border-radius:30px;flex:0 0 52px;position:relative;cursor:pointer;
+  background:rgba(143,185,240,.25);border:1px solid var(--hair-strong);transition:all .4s var(--ease);
+}
+.toggle::after{content:"";position:absolute;top:2px;left:2px;width:24px;height:24px;border-radius:50%;
+  background:linear-gradient(180deg,#fff,#d8d0bf);transition:all .4s var(--ease);box-shadow:0 2px 6px rgba(0,0,0,.4)}
+.switch.on .toggle{background:rgba(95,174,116,.5)}
+.switch.on .toggle::after{left:24px}
+.switch .lab b{font-size:14.5px;font-weight:600;display:block}
+.switch .lab span{font-size:12.5px;color:var(--muted)}
+.modenote{font-size:13px;line-height:1.6;color:var(--ink-soft);padding:13px 16px;border-radius:12px;
+  background:rgba(95,174,116,.07);border:1px solid rgba(95,174,116,.18)}
+.modenote.online{background:rgba(143,185,240,.07);border-color:rgba(143,185,240,.2)}
+.modenote .tag{font-weight:700}
+.modenote.offline .tag{color:var(--sage)} .modenote.online .tag{color:var(--blue)}
+
+/* shortcut keycaps */
+.keys{display:flex;gap:30px;margin:6px 0 4px}
+.keyset b{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.14em;display:block;margin-bottom:11px}
+.bigcap{
+  font-family:"Fraunces",serif;font-size:21px;font-weight:500;color:var(--ink);
+  background:linear-gradient(180deg,#2c2517,#1d180f);border:1px solid var(--hair-strong);
+  border-bottom-width:3px;border-radius:13px;padding:16px 22px;display:inline-flex;align-items:center;gap:10px;
+  box-shadow:0 3px 0 rgba(0,0,0,.4);
+}
+.bigcap small{font-family:"Hanken Grotesk";font-size:12px;color:var(--muted);font-weight:600}
+.changelink{display:block;margin-top:11px;font-size:12px;color:var(--amber);font-weight:600}
+
+/* done */
+.done-hero{display:flex;flex-direction:column;align-items:flex-start;gap:18px;max-width:44ch}
+.bigwave{display:flex;align-items:center;gap:5px;height:54px}
+.bigwave i{width:5px;border-radius:5px;background:linear-gradient(var(--sage),var(--sage-deep));animation:eq 1.4s var(--ease) infinite}
+.bigwave i:nth-child(odd){background:linear-gradient(var(--amber-hi),var(--amber-deep))}
+.recap{display:flex;flex-direction:column;gap:9px;width:100%}
+.recap .r{display:flex;gap:11px;align-items:center;font-size:13.5px;color:var(--ink-soft)}
+.recap .r .ck{width:20px;height:20px;border-radius:50%;background:rgba(95,174,116,.18);border:1px solid var(--sage-deep);
+  color:var(--sage);display:grid;place-items:center;font-size:11px;font-weight:700;flex:0 0 20px}
+
+/* ── FOOTER NAV ────────────────────────────────────────── */
+.nav{display:flex;align-items:center;justify-content:space-between;padding-top:22px;margin-top:18px;border-top:1px solid var(--hair)}
+.progress{display:flex;gap:6px}
+.progress i{width:7px;height:7px;border-radius:50%;background:var(--hair-strong);transition:all .35s}
+.progress i.on{background:var(--amber);width:22px;border-radius:7px}
+.btns{display:flex;gap:10px}
+button{font-family:inherit;cursor:pointer;border:none;font-size:13.5px;font-weight:600;letter-spacing:.1px;transition:all .25s var(--ease)}
+.ghost{background:transparent;color:var(--muted);padding:11px 18px;border-radius:10px}
+.ghost:hover{color:var(--ink);background:var(--hair)}
+.primary{
+  background:linear-gradient(180deg,var(--amber-hi),var(--amber-deep));color:#2a1c08;
+  padding:11px 24px;border-radius:10px;box-shadow:0 3px 16px rgba(245,177,92,.28);
+  display:inline-flex;align-items:center;gap:8px;
+}
+.primary:hover{transform:translateY(-1px);box-shadow:0 5px 22px rgba(245,177,92,.4)}
+.primary .arr{transition:transform .25s}
+.primary:hover .arr{transform:translateX(3px)}
+
+/* step entrance */
+.step{display:none}
+.step.show{display:block;animation:rise .55s var(--ease) both}
+.step.show .kicker{animation:rise .5s var(--ease) both;animation-delay:.02s}
+.step.show h1{animation:rise .55s var(--ease) both;animation-delay:.06s}
+.step.show .lede{animation:rise .55s var(--ease) both;animation-delay:.12s}
+.step.show .content>*{animation:rise .6s var(--ease) both;animation-delay:.18s}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <!-- LEFT RAIL -->
+  <aside class="rail">
+    <div class="brand">
+      <div class="eq"><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="name">Voice&nbsp;To&nbsp;Text<small>Setup</small></div>
+    </div>
+    <nav class="steps" id="rail"></nav>
+    <div class="foot">Runs <b>100% on your Mac</b> by default.<br>No account. No cloud. No cost.</div>
+  </aside>
+
+  <!-- RIGHT CONTENT -->
+  <main class="main">
+    <!-- WELCOME -->
+    <section class="step" data-step="0">
+      <div class="kicker">Welcome</div>
+      <h1>Two keys do <em>everything</em>.</h1>
+      <p class="lede">No menus, no buttons to hunt for. Hold a key, talk, let go. Your Mac does the rest — instantly, and in private.</p>
+      <div class="content">
+        <div class="keycards">
+          <div class="kc dictate">
+            <div class="cap">⌥ Right</div>
+            <div><h3>Dictate</h3><p>Tap it, talk, tap again. Your words type <b>wherever your cursor is</b> — fast and accurate.</p></div>
+          </div>
+          <div class="kc write">
+            <div class="cap">⌥ Left</div>
+            <div><h3>AI Write &amp; Edit</h3><p>Speak an instruction. <b>Text selected</b> → it rewrites it. <b>Nothing selected</b> → it drafts it for you.</p></div>
+          </div>
+        </div>
+        <div class="hint"><span class="pill"><i></i><i></i><i></i><i></i></span> A floating waveform appears while recording — ✓ to finish, ✕ to cancel.</div>
+      </div>
+    </section>
+
+    <!-- PERMISSIONS -->
+    <section class="step" data-step="1">
+      <div class="kicker">One-time setup</div>
+      <h1>Three quick <em>permissions</em>.</h1>
+      <p class="lede">macOS asks every dictation app for these. Click each, enable “Python” (or this app), and you’re set.</p>
+      <div class="content">
+        <div class="perm">
+          <div class="prow"><div class="ico">🎙️</div><div class="tx"><b>Microphone</b><span>So it can hear your voice.</span></div><div class="go">Open</div></div>
+          <div class="prow"><div class="ico">♿️</div><div class="tx"><b>Accessibility</b><span>So it can paste with ⌘V.</span></div><div class="go">Open</div></div>
+          <div class="prow"><div class="ico">⌨️</div><div class="tx"><b>Input Monitoring</b><span>So the Option keys work everywhere.</span></div><div class="go">Open</div></div>
+        </div>
+        <div class="statusline"><span class="b"></span> Accessibility: granted. You may need to relaunch after enabling.</div>
+      </div>
+    </section>
+
+    <!-- MODE -->
+    <section class="step" data-step="2">
+      <div class="kicker">Choose your mode</div>
+      <h1>Private by <em>default</em>.</h1>
+      <p class="lede">Offline keeps everything on your Mac — no internet, no API key. It’s the default and what we recommend. Switch anytime from the menu bar.</p>
+      <div class="content">
+        <div class="modewrap">
+          <div class="switch on" id="modeSwitch">
+            <div class="toggle"></div>
+            <div class="lab"><b>Offline — 100% on-device</b><span>Recommended · nothing leaves your Mac</span></div>
+          </div>
+          <div class="modenote offline" id="modeNote"><span class="tag">🟢 Offline</span> — dictation and AI writing both run on your Mac. No key needed.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SHORTCUT -->
+    <section class="step" data-step="3">
+      <div class="kicker">Your keys</div>
+      <h1>Pick your two <em>keys</em>.</h1>
+      <p class="lede">The Option keys are the defaults — clean and easy to reach. Press “Change” to set your own (a bare key or a ⌃-combo works best).</p>
+      <div class="content">
+        <div class="keys">
+          <div class="keyset"><b>Dictate</b><div class="bigcap">⌥<small>Right Option</small></div><a class="changelink">Change…</a></div>
+          <div class="keyset"><b>AI Write</b><div class="bigcap">⌥<small>Left Option</small></div><a class="changelink">Change…</a></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DOWNLOAD (offline) -->
+    <section class="step" data-step="4">
+      <div class="kicker">Almost there</div>
+      <h1>Get the <em>voice model</em>.</h1>
+      <p class="lede">Offline dictation uses Whisper, running on Apple Silicon. It downloads once (~3&nbsp;GB) and then works forever without internet.</p>
+      <div class="content">
+        <div class="modenote offline"><span class="tag">🟢 On-device</span> — the model lives on your Mac. First dictation triggers the download automatically; nothing is sent anywhere.</div>
+      </div>
+    </section>
+
+    <!-- DONE -->
+    <section class="step" data-step="5">
+      <div class="kicker">You’re ready</div>
+      <h1>Go ahead — <em>say something</em>.</h1>
+      <div class="content">
+        <div class="done-hero">
+          <div class="bigwave"><i style="height:18px"></i><i style="height:40px"></i><i style="height:28px"></i><i style="height:50px"></i><i style="height:22px"></i><i style="height:44px"></i><i style="height:16px"></i><i style="height:34px"></i></div>
+          <div class="recap">
+            <div class="r"><span class="ck">✓</span> Tap <b>&nbsp;Right Option&nbsp;</b>, talk, tap again to type it.</div>
+            <div class="r"><span class="ck">✓</span> Tap <b>&nbsp;Left Option&nbsp;</b> to write or edit with AI.</div>
+            <div class="r"><span class="ck">✓</span> Everything runs on your Mac — private and free.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- NAV -->
+    <div class="nav">
+      <div class="progress" id="prog"></div>
+      <div class="btns">
+        <button class="ghost" id="back">Back</button>
+        <button class="primary" id="next">Continue <span class="arr">→</span></button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+const STEPS=[
+  {key:"welcome",label:"Welcome"},
+  {key:"permissions",label:"Permissions"},
+  {key:"mode",label:"Online or offline"},
+  {key:"shortcut",label:"Your keys"},
+  {key:"download",label:"Voice model"},
+  {key:"done",label:"Ready"},
+];
+let i=Math.max(0,Math.min(STEPS.length-1,parseInt(new URLSearchParams(location.search).get('step'))||0));
+const rail=document.getElementById('rail'), prog=document.getElementById('prog');
+STEPS.forEach((s,n)=>{
+  rail.insertAdjacentHTML('beforeend',`<div class="s" data-n="${n}"><span class="dot">${n+1}</span>${s.label}</div>`);
+  prog.insertAdjacentHTML('beforeend',`<i data-n="${n}"></i>`);
+});
+function render(){
+  document.querySelectorAll('.step').forEach(el=>el.classList.toggle('show',+el.dataset.step===i));
+  document.querySelectorAll('.steps .s').forEach((el,n)=>{
+    el.classList.toggle('active',n===i); el.classList.toggle('done',n<i);
+    el.querySelector('.dot').textContent = n<i ? '✓' : n+1;
+  });
+  document.querySelectorAll('.progress i').forEach((el,n)=>el.classList.toggle('on',n===i));
+  document.getElementById('back').style.visibility = i===0?'hidden':'visible';
+  document.getElementById('next').innerHTML = i===STEPS.length-1 ? 'Start dictating ✓' : 'Continue <span class="arr">→</span>';
+}
+document.getElementById('next').onclick=()=>{ if(i<STEPS.length-1){i++;render();} };
+document.getElementById('back').onclick=()=>{ if(i>0){i--;render();} };
+rail.onclick=e=>{const s=e.target.closest('.s'); if(s){i=+s.dataset.n;render();}};
+// mode toggle demo
+const sw=document.getElementById('modeSwitch'), note=document.getElementById('modeNote');
+sw.onclick=()=>{
+  const on=sw.classList.toggle('on');
+  if(on){note.className='modenote offline';note.innerHTML='<span class="tag">🟢 Offline</span> — dictation and AI writing both run on your Mac. No key needed.';}
+  else{note.className='modenote online';note.innerHTML='<span class="tag">🔵 Online</span> — uses Groq’s cloud for speed. You’ll add a free key next.';}
+};
+render();
+</script>
+</body>
+</html>
