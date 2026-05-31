@@ -330,16 +330,17 @@ button{font-family:inherit;cursor:pointer;border:none;font-size:13.5px;font-weig
       </div>
     </section>
 
-    <!-- API KEY (online) -->
+    <!-- API KEYS (online) -->
     <section class="step" data-key="apikey">
-      <div class="kicker">Online key</div>
-      <h1>One free <em>key</em>.</h1>
-      <p class="lede">Online mode streams your dictation through AssemblyAI — much faster than on-device. It’s free to start, no card. Paste your key below; it’s stored encrypted in your macOS Keychain, never uploaded or committed.</p>
+      <div class="kicker">Online keys</div>
+      <h1>Two free <em>keys</em>.</h1>
+      <p class="lede">Online mode streams dictation through AssemblyAI and writes/edits with Groq — both free to start, no card. Paste each below; they’re stored encrypted in your macOS Keychain, never uploaded or committed.</p>
       <div class="content">
         <div class="perm">
           <div class="prow"><div class="ico">🎙️</div><div class="tx"><b>AssemblyAI <span id="aaiStatus" class="kchip">— not set</span></b><span>Streaming dictation. Free key from assemblyai.com.</span></div><button class="go" data-act="enterKey" data-which="assemblyai">Paste key</button></div>
+          <div class="prow"><div class="ico">🧠</div><div class="tx"><b>Groq <span id="groqStatus" class="kchip">— not set</span></b><span>AI write &amp; edit (gpt-oss-120b). Free key from console.groq.com.</span></div><button class="go" data-act="enterKey" data-which="groq">Paste key</button></div>
         </div>
-        <div class="modenote online"><span class="tag">🔒 Keychain</span> — the key is entered in a secure macOS prompt and stored encrypted. AI writing runs on-device, so no second key is needed. (Add a Groq key in Settings for sharper cloud writing.)</div>
+        <div class="modenote online"><span class="tag">🔒 Keychain</span> — keys are entered in a secure macOS prompt and stored encrypted. Skip Groq and AI writing falls back to the on-device model (sharper with Groq).</div>
       </div>
     </section>
 
