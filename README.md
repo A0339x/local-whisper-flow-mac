@@ -47,10 +47,9 @@ Apple won't let software toggle those). Then tap **Right Option** and start talk
     to my manager saying I'll be late", "message Jake to reschedule dinner") and
     the AI drafts it and types it at your cursor — styled to the app
     (professional in Gmail, casual in Slack), with no `[placeholders]` to fill in.
-  - **Local edition** runs this on a local model (`llama3.1:8b`, or `qwen2.5:32b`
-    on a powerful Mac). **Cloud edition** runs it on OpenAI (~1-2 s, frees ~21 GB
-    RAM). Dictation stays 100% local either way — see
-    [Local vs cloud edition](#local-vs-cloud-edition).
+  - Runs on **OpenAI `gpt-4o-mini`** (~1-2 s, sharp drafts) in the main editions.
+    A fully-offline mode uses a local model instead — see
+    [Pick your edition](#pick-your-edition-the-installer-asks--no-config-editing).
 - 🕘 **Dictation history** — every dictation is saved (`history.jsonl`); open the
   history window (Settings ▸ Dictation History…) and double-click any past
   entry to copy it back to the clipboard.
@@ -65,32 +64,35 @@ Apple won't let software toggle those). Then tap **Right Option** and start talk
 
 ## Pick your edition (the installer asks — no config editing)
 
-Run `./setup.sh` and it asks which edition you want:
+Run `./setup.sh` and it asks which one you want. The two main editions both use
+**OpenAI for the left-Option Write/edit** (much sharper than a local 8B); they
+differ by where **dictation** runs:
 
-| | **Local** | **Cloud** |
+| | **Local** (recommended) | **Cloud** |
 |---|---|---|
-| Dictation | Whisper on-device | Groq `whisper-large-v3` |
-| Write/Command | local Ollama | OpenAI `gpt-4o-mini` |
-| Needs | ~3 GB model download + Ollama | free Groq + OpenAI keys |
-| Hardware | a capable Apple-Silicon Mac | **any** Apple-Silicon Mac (no GPU) |
-| Privacy | 100% on-device, works offline | only your dictations are uploaded |
-| Cost | free | ~cents/day of use |
-| Best for | privacy purists, offline | sharing, low-spec machines |
+| Dictation | Whisper **on-device** | Groq `whisper-large-v3` |
+| Write/edit (left ⌥) | OpenAI `gpt-4o-mini` | OpenAI `gpt-4o-mini` |
+| Needs | a free OpenAI key | free Groq + OpenAI keys |
+| Hardware | capable Apple-Silicon Mac | **any** Apple-Silicon Mac (no GPU) |
+| Privacy | dictation never leaves the Mac; only Write drafts go to OpenAI | dictation + Write go to the cloud |
+| Downloads | Whisper model (~3 GB, once) | none |
+| Best for | most people | sharing, low-spec machines |
 
 Both run the **same code** — the edition is just config. The installer collects
-any keys, writes a gitignored `config.local.toml`, and never commits your keys.
+the keys, writes a gitignored `config.local.toml`, and never commits them.
 
-**Switch editions anytime, no code editing:**
 ```bash
-./setup.sh --cloud     # or --local   (or just ./setup.sh and pick)
+./setup.sh            # asks: Local or Cloud
+./setup.sh --cloud    # or --local   (non-interactive)
 ```
 
-<details><summary>Advanced: a hybrid edition (local dictation + cloud Write)</summary>
+<details><summary>Fully offline (no keys, no internet)</summary>
 
-If you have a powerful Mac and want local dictation but sharper/RAM-free drafts,
-use `config.cloud.toml` (cloud Write only) instead of the full-cloud preset:
-`cp config.cloud.toml config.local.toml` + an OpenAI key. `config.local.toml`
-deep-merges over `config.toml`; delete it to return to 100% local.
+Want zero cloud — dictation **and** Write fully on-device? Run
+`./setup.sh --offline`. It installs Ollama and uses a local model
+(`llama3.1:8b`) for the Write/edit side. No keys, works on a plane — but the
+local model's drafts aren't as sharp as OpenAI's, which is why the main
+editions use OpenAI. Switch back anytime with `./setup.sh`.
 </details>
 
 ---

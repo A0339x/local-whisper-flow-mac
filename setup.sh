@@ -16,7 +16,19 @@ for a in "$@"; do case "$a" in
   --yes|-y) AUTO=1 ;;
   --local) EDITION=local ;;
   --cloud) EDITION=cloud ;;
+  --offline) EDITION=offline ;;
 esac; done
+
+# Collect an API key into a 0600 file (skip if already present).
+collect_key() {  # NAME HINT URL FILE
+  if [ -s "$4" ]; then echo "── $1 key already present."
+  elif [ "$AUTO" = "1" ]; then echo "✋ No $1 key — put it at $4 and re-run."; exit 1
+  else
+    echo "   Get a free $1 key at $3"
+    read -r -p "── Paste your $1 API key ($2): " _K
+    printf '%s' "$_K" > "$4"; chmod 600 "$4"
+  fi
+}
 
 # Apple Silicon required (macOS UI stack; local also needs MLX). Cloud needs NO
 # powerful machine — a base M1 Air is plenty since the heavy models run remotely.
@@ -33,61 +45,57 @@ fi
 export PATH="$HOME/.local/bin:$PATH"
 
 # ── Pick the edition ──────────────────────────────────────────────────────────
+# Write/Command mode runs on OpenAI in the two main editions (sharper than the
+# local 8B). They differ by DICTATION: on-device Whisper vs cloud Groq. --offline
+# is the zero-key, fully on-device option (local 8B Write).
 if [ -z "$EDITION" ]; then
   if [ "$AUTO" = "1" ]; then
     EDITION=local
   else
     echo ""
     echo "Which edition do you want?"
-    echo "  [1] Local  — 100% private, on-device. Downloads ~3 GB Whisper model + Ollama."
-    echo "               Best on a capable Apple-Silicon Mac. Works offline, free."
-    echo "  [2] Cloud  — runs on ANY Apple-Silicon Mac, no downloads, light + fast."
-    echo "               Needs free Groq + OpenAI API keys. Only your dictations are sent."
+    echo "  [1] Local  — dictation on-device (Whisper) + AI write via OpenAI (best quality)."
+    echo "               Your dictation never leaves the Mac; only Write drafts use OpenAI."
+    echo "               Needs a free OpenAI key. Recommended."
+    echo "  [2] Cloud  — dictation via Groq + write via OpenAI. Runs on ANY Apple-Silicon"
+    echo "               Mac, no downloads. Needs free Groq + OpenAI keys."
+    echo "  (100% offline, no keys, local 8B write — lower quality: re-run with --offline)"
     read -r -p "── Choose 1 or 2 [1]: " ch
     case "$ch" in 2) EDITION=cloud ;; *) EDITION=local ;; esac
   fi
 fi
 echo "── Edition: $EDITION"
 
+mkdir -p "$HOME/.config/voice-to-text"
+GROQ_FILE="$HOME/.config/voice-to-text/groq_key"
+OPENAI_FILE="$HOME/.config/voice-to-text/openai_key"
+
 if [ "$EDITION" = "cloud" ]; then
-  # Cloud: collect keys, enable the full-cloud preset, skip all local models.
-  mkdir -p "$HOME/.config/voice-to-text"
-  GROQ_FILE="$HOME/.config/voice-to-text/groq_key"
-  OPENAI_FILE="$HOME/.config/voice-to-text/openai_key"
-  for spec in "Groq|gsk_…|console.groq.com|$GROQ_FILE" "OpenAI|sk-…|platform.openai.com|$OPENAI_FILE"; do
-    IFS='|' read -r NAME HINT URL FILE <<<"$spec"
-    if [ -s "$FILE" ]; then echo "── $NAME key already present."
-    elif [ "$AUTO" = "1" ]; then echo "✋ No $NAME key. Put it at $FILE and re-run."; exit 1
-    else
-      echo "   Get a free $NAME key at $URL"
-      read -r -p "── Paste your $NAME API key ($HINT): " K
-      printf '%s' "$K" > "$FILE"; chmod 600 "$FILE"
-    fi
-  done
-  if [ -s config.local.toml ]; then
-    echo "── config.local.toml exists — leaving it (delete it to re-pick edition)."
-  else
-    cp config.cloud-full.toml config.local.toml
-    echo "── Enabled full-cloud edition."
-  fi
-else
-  # Local: Ollama + the Write-mode model. Remove any cloud override so the
-  # 100%-local default in config.toml takes effect.
-  [ -f config.local.toml ] && { rm -f config.local.toml; echo "── Removed cloud override (now 100% local)."; }
+  # Groq dictation + OpenAI write. No local models.
+  collect_key Groq   "gsk_…" console.groq.com    "$GROQ_FILE"
+  collect_key OpenAI "sk-…"  platform.openai.com "$OPENAI_FILE"
+  [ -s config.local.toml ] && echo "── config.local.toml exists — leaving it (delete to re-pick)." \
+    || { cp config.cloud-full.toml config.local.toml; echo "── Enabled full-cloud edition."; }
+
+elif [ "$EDITION" = "offline" ]; then
+  # Fully on-device: local Whisper + local 8B write. No keys. Needs Ollama.
+  [ -f config.local.toml ] && { rm -f config.local.toml; echo "── Removed override (now 100% offline)."; }
   if ! command -v ollama >/dev/null 2>&1; then
     if command -v brew >/dev/null 2>&1; then echo "── Installing Ollama…"; brew install ollama
-    else echo "✋ Install Ollama from https://ollama.com/download , then re-run ./setup.sh"; exit 1; fi
+    else echo "✋ Install Ollama from https://ollama.com/download , then re-run."; exit 1; fi
   fi
-  if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
-    echo "── Starting Ollama…"; (ollama serve >/dev/null 2>&1 &); sleep 2
-  fi
+  curl -s http://localhost:11434/api/tags >/dev/null 2>&1 || { echo "── Starting Ollama…"; (ollama serve >/dev/null 2>&1 &); sleep 2; }
   MODEL=$(awk '/^\[/{s=$0} s=="[formatting]" && /^[[:space:]]*model[[:space:]]*=/{v=$0; sub(/^[^=]*=[[:space:]]*/,"",v); gsub(/"/,"",v); print v; exit}' config.toml)
   MODEL=${MODEL:-llama3.1:8b}
-  if ollama list 2>/dev/null | awk '{print $1}' | grep -qx "$MODEL"; then
-    echo "── Write-mode model already present: $MODEL"
-  else
-    echo "── Pulling the Write-mode model: $MODEL (one time)…"; ollama pull "$MODEL"
-  fi
+  if ollama list 2>/dev/null | awk '{print $1}' | grep -qx "$MODEL"; then echo "── Write model present: $MODEL"
+  else echo "── Pulling the Write model: $MODEL (one time)…"; ollama pull "$MODEL"; fi
+
+else
+  # Local (default): on-device Whisper dictation + OpenAI write. No Ollama needed.
+  EDITION=local
+  collect_key OpenAI "sk-…" platform.openai.com "$OPENAI_FILE"
+  [ -s config.local.toml ] && echo "── config.local.toml exists — leaving it (delete to re-pick)." \
+    || { cp config.cloud.toml config.local.toml; echo "── Enabled local-dictation + OpenAI-write edition."; }
 fi
 
 # ── Common: deps, build, install ──────────────────────────────────────────────
@@ -119,10 +127,11 @@ echo "    • Input Monitoring  (to hear the Right Option hotkey)"
 echo "  Then QUIT and relaunch the app (click \"Voice To Text\")."
 echo ""
 echo "Use it:  Right Option → dictate.   Left Option → AI edit/write."
-if [ "$EDITION" = "cloud" ]; then
-  echo "Cloud edition: no model download — first dictation is instant. Only your"
-  echo "dictations are uploaded. Switch to local later: rm config.local.toml && ./setup.sh"
-else
-  echo "Local edition: first dictation downloads the Whisper model (~3 GB, one time)."
-  echo "Switch to cloud later: ./setup.sh --cloud"
-fi
+case "$EDITION" in
+  cloud)   echo "Cloud: no downloads — first dictation is instant. Only your dictations are"
+           echo "uploaded. Re-pick anytime: rm config.local.toml && ./setup.sh" ;;
+  offline) echo "Offline: 100% on-device, no keys. First dictation downloads Whisper (~3 GB)."
+           echo "Switch to OpenAI write / cloud: ./setup.sh  (and pick 1 or 2)" ;;
+  *)       echo "Local: dictation on-device (first one downloads Whisper ~3 GB); write via OpenAI."
+           echo "Re-pick anytime: rm config.local.toml && ./setup.sh" ;;
+esac

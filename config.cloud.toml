@@ -1,20 +1,18 @@
-# ── CLOUD edition preset ──────────────────────────────────────────────────────
-# The repo ships as the 100%-LOCAL edition (config.toml). Use this preset to run
-# Command/Write mode (left Option) on OpenAI instead of a local model — ~1-2s
-# drafts, frees ~21GB of local RAM. Dictation ALWAYS stays 100% local; only
-# Write/Command text is sent to the API.
+# ── LOCAL edition preset (recommended) ────────────────────────────────────────
+# Dictation stays 100% on-device (local Whisper); only Command/Write mode (left
+# Option) runs on OpenAI — much sharper than the local 8B for drafting/editing,
+# ~1-2s, and no local LLM eating RAM. This is what `./setup.sh` (choice 1) sets
+# up for you, including the OpenAI key prompt.
 #
-# To enable the cloud edition:
+# Manual enable:
 #   1. cp config.cloud.toml config.local.toml
-#   2. mkdir -p ~/.config/voice-to-text
-#      printf 'sk-YOURKEY' > ~/.config/voice-to-text/openai_key
-#      chmod 600 ~/.config/voice-to-text/openai_key
+#   2. printf 'sk-YOURKEY' > ~/.config/voice-to-text/openai_key && chmod 600 ~/.config/voice-to-text/openai_key
 #   3. Restart the app.
 #
-# config.local.toml is gitignored and DEEP-MERGES over config.toml, so only the
-# keys below change and your key never gets committed. To go back to the local
-# edition, just delete config.local.toml. Works with any OpenAI-compatible
-# endpoint (OpenAI, OpenRouter, a local server…).
+# config.local.toml is gitignored and DEEP-MERGES over config.toml; your key
+# never gets committed. For 100% offline (local 8B write, no key) delete
+# config.local.toml. For cloud dictation too, use config.cloud-full.toml. Works
+# with any OpenAI-compatible endpoint (OpenAI, OpenRouter, a local server…).
 
 [formatting]
 command_base_url = "https://api.openai.com/v1"
