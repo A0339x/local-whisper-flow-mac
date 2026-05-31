@@ -45,21 +45,22 @@ fi
 export PATH="$HOME/.local/bin:$PATH"
 
 # ── Pick the edition ──────────────────────────────────────────────────────────
-# Write/Command mode runs on OpenAI in the two main editions (sharper than the
-# local 8B). They differ by DICTATION: on-device Whisper vs cloud Groq. --offline
-# is the zero-key, fully on-device option (local 8B Write).
+# Write/Command mode runs on Groq's gpt-oss-120b in the two main editions
+# (sharper than the local 8B). They differ by DICTATION: on-device Whisper vs
+# cloud Groq. Both need just ONE free Groq key. --offline is the zero-key, fully
+# on-device option (local 8B Write).
 if [ -z "$EDITION" ]; then
   if [ "$AUTO" = "1" ]; then
     EDITION=local
   else
     echo ""
-    echo "Which edition do you want?"
-    echo "  [1] Local  — dictation on-device (Whisper) + AI write via OpenAI (best quality)."
-    echo "               Your dictation never leaves the Mac; only Write drafts use OpenAI."
-    echo "               Needs a free OpenAI key. Recommended."
-    echo "  [2] Cloud  — dictation via Groq + write via OpenAI. Runs on ANY Apple-Silicon"
-    echo "               Mac, no downloads. Needs free Groq + OpenAI keys."
-    echo "  (100% offline, no keys, local 8B write — lower quality: re-run with --offline)"
+    echo "Which edition do you want?  (both use one free Groq key — console.groq.com)"
+    echo "  [1] Local  — dictation on-device (Whisper) + AI write via Groq (best privacy)."
+    echo "               Your dictation never leaves the Mac; only Write drafts go to Groq."
+    echo "               Recommended."
+    echo "  [2] Cloud  — dictation AND write via Groq. Runs on ANY Apple-Silicon Mac,"
+    echo "               no downloads. Lightest setup."
+    echo "  (100% offline, no key, local 8B write — lower quality: re-run with --offline)"
     read -r -p "── Choose 1 or 2 [1]: " ch
     case "$ch" in 2) EDITION=cloud ;; *) EDITION=local ;; esac
   fi
@@ -71,11 +72,10 @@ GROQ_FILE="$HOME/.config/voice-to-text/groq_key"
 OPENAI_FILE="$HOME/.config/voice-to-text/openai_key"
 
 if [ "$EDITION" = "cloud" ]; then
-  # Groq dictation + OpenAI write. No local models.
-  collect_key Groq   "gsk_…" console.groq.com    "$GROQ_FILE"
-  collect_key OpenAI "sk-…"  platform.openai.com "$OPENAI_FILE"
+  # Groq dictation + Groq write (gpt-oss-120b). One key, no local models.
+  collect_key Groq "gsk_…" console.groq.com "$GROQ_FILE"
   [ -s config.local.toml ] && echo "── config.local.toml exists — leaving it (delete to re-pick)." \
-    || { cp config.cloud-full.toml config.local.toml; echo "── Enabled full-cloud edition."; }
+    || { cp config.cloud-full.toml config.local.toml; echo "── Enabled full-cloud edition (Groq)."; }
 
 elif [ "$EDITION" = "offline" ]; then
   # Fully on-device: local Whisper + local 8B write. No keys. Needs Ollama.
@@ -91,11 +91,12 @@ elif [ "$EDITION" = "offline" ]; then
   else echo "── Pulling the Write model: $MODEL (one time)…"; ollama pull "$MODEL"; fi
 
 else
-  # Local (default): on-device Whisper dictation + OpenAI write. No Ollama needed.
+  # Local (default): on-device Whisper dictation + Groq write (gpt-oss-120b).
+  # One Groq key, no Ollama.
   EDITION=local
-  collect_key OpenAI "sk-…" platform.openai.com "$OPENAI_FILE"
+  collect_key Groq "gsk_…" console.groq.com "$GROQ_FILE"
   [ -s config.local.toml ] && echo "── config.local.toml exists — leaving it (delete to re-pick)." \
-    || { cp config.cloud.toml config.local.toml; echo "── Enabled local-dictation + OpenAI-write edition."; }
+    || { cp config.cloud.toml config.local.toml; echo "── Enabled local-dictation + Groq-write edition."; }
 fi
 
 # ── Common: deps, build, install ──────────────────────────────────────────────

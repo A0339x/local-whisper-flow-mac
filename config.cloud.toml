@@ -1,19 +1,24 @@
 # ── LOCAL edition preset (recommended) ────────────────────────────────────────
 # Dictation stays 100% on-device (local Whisper); only Command/Write mode (left
-# Option) runs on OpenAI — much sharper than the local 8B for drafting/editing,
-# ~1-2s, and no local LLM eating RAM. This is what `./setup.sh` (choice 1) sets
-# up for you, including the OpenAI key prompt.
+# Option) runs in the cloud on Groq's gpt-oss-120b — much sharper than the local
+# 8B, ~0.5s, and no local LLM eating RAM. One Groq key powers it. This is what
+# `./setup.sh` (choice 1) sets up for you, including the key prompt.
 #
 # Manual enable:
 #   1. cp config.cloud.toml config.local.toml
-#   2. printf 'sk-YOURKEY' > ~/.config/voice-to-text/openai_key && chmod 600 ~/.config/voice-to-text/openai_key
+#   2. printf 'gsk_YOURKEY' > ~/.config/voice-to-text/groq_key && chmod 600 ~/.config/voice-to-text/groq_key
 #   3. Restart the app.
 #
 # config.local.toml is gitignored and DEEP-MERGES over config.toml; your key
 # never gets committed. For 100% offline (local 8B write, no key) delete
-# config.local.toml. For cloud dictation too, use config.cloud-full.toml. Works
-# with any OpenAI-compatible endpoint (OpenAI, OpenRouter, a local server…).
+# config.local.toml. For cloud dictation too, use config.cloud-full.toml.
+# Prefer a different model? It's OpenAI-compatible — swap to OpenAI with
+#   command_base_url = "https://api.openai.com/v1", command_model = "gpt-4o-mini",
+#   command_api_key_file = "~/.config/voice-to-text/openai_key"
+# or to Groq's Llama with command_model = "llama-3.3-70b-versatile".
 
 [formatting]
-command_base_url = "https://api.openai.com/v1"
-command_model = "gpt-4o-mini"   # fast + ~$0.0002/draft; or "gpt-4o" for top quality
+command_base_url = "https://api.groq.com/openai/v1"
+command_model = "openai/gpt-oss-120b"   # OpenAI's open model on Groq — fast + sharp
+command_api_key_env = "GROQ_API_KEY"
+command_api_key_file = "~/.config/voice-to-text/groq_key"

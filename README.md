@@ -47,8 +47,8 @@ Apple won't let software toggle those). Then tap **Right Option** and start talk
     to my manager saying I'll be late", "message Jake to reschedule dinner") and
     the AI drafts it and types it at your cursor — styled to the app
     (professional in Gmail, casual in Slack), with no `[placeholders]` to fill in.
-  - Runs on **OpenAI `gpt-4o-mini`** (~1-2 s, sharp drafts) in the main editions.
-    A fully-offline mode uses a local model instead — see
+  - Runs on **Groq `gpt-oss-120b`** (~0.5 s, sharp drafts) in the main editions —
+    one key shared with dictation. A fully-offline mode uses a local model — see
     [Pick your edition](#pick-your-edition-the-installer-asks--no-config-editing).
 - 🕘 **Dictation history** — every dictation is saved (`history.jsonl`); open the
   history window (Settings ▸ Dictation History…) and double-click any past
@@ -64,22 +64,24 @@ Apple won't let software toggle those). Then tap **Right Option** and start talk
 
 ## Pick your edition (the installer asks — no config editing)
 
-Run `./setup.sh` and it asks which one you want. The two main editions both use
-**OpenAI for the left-Option Write/edit** (much sharper than a local 8B); they
-differ by where **dictation** runs:
+Run `./setup.sh` and it asks which one you want. Both main editions use **Groq
+for the left-Option Write/edit** (`gpt-oss-120b` — OpenAI's open model, much
+sharper than a local 8B) and need just **one free Groq key**. They differ by
+where **dictation** runs:
 
 | | **Local** (recommended) | **Cloud** |
 |---|---|---|
 | Dictation | Whisper **on-device** | Groq `whisper-large-v3` |
-| Write/edit (left ⌥) | OpenAI `gpt-4o-mini` | OpenAI `gpt-4o-mini` |
-| Needs | a free OpenAI key | free Groq + OpenAI keys |
+| Write/edit (left ⌥) | Groq `gpt-oss-120b` | Groq `gpt-oss-120b` |
+| Needs | **one** free Groq key | **one** free Groq key |
 | Hardware | capable Apple-Silicon Mac | **any** Apple-Silicon Mac (no GPU) |
-| Privacy | dictation never leaves the Mac; only Write drafts go to OpenAI | dictation + Write go to the cloud |
+| Privacy | dictation never leaves the Mac; only Write drafts go to Groq | dictation + Write go to Groq |
 | Downloads | Whisper model (~3 GB, once) | none |
 | Best for | most people | sharing, low-spec machines |
 
 Both run the **same code** — the edition is just config. The installer collects
-the keys, writes a gitignored `config.local.toml`, and never commits them.
+the key, writes a gitignored `config.local.toml`, and never commits it. Prefer
+OpenAI or another model? It's OpenAI-compatible — one-line swap in the preset.
 
 ```bash
 ./setup.sh            # asks: Local or Cloud

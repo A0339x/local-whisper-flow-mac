@@ -1,20 +1,23 @@
 # ── FULL-CLOUD edition preset ─────────────────────────────────────────────────
-# Dictation → Groq whisper-large-v3.  Write/Command mode → OpenAI gpt-4o-mini.
-# NO local models — runs on any Apple-Silicon Mac, no GPU, no big downloads.
-# This is the edition to SHARE: `./setup-cloud.sh` copies it to config.local.toml
-# and collects the two keys for you. To enable it by hand:
+# Everything on Groq: dictation → whisper-large-v3, Write/Command → gpt-oss-120b.
+# ONE Groq key, NO local models — runs on any Apple-Silicon Mac, no GPU, no
+# downloads. This is the edition to SHARE: `./setup.sh` (choice 2) copies it to
+# config.local.toml and collects the single Groq key for you. By hand:
 #   cp config.cloud-full.toml config.local.toml
-#   printf 'gsk_YOURKEY' > ~/.config/voice-to-text/groq_key   && chmod 600 ~/.config/voice-to-text/groq_key
-#   printf 'sk-YOURKEY'  > ~/.config/voice-to-text/openai_key && chmod 600 ~/.config/voice-to-text/openai_key
-# config.local.toml is gitignored and deep-merges over config.toml, so keys and
-# personal settings never get committed. Delete config.local.toml to go local.
+#   printf 'gsk_YOURKEY' > ~/.config/voice-to-text/groq_key && chmod 600 ~/.config/voice-to-text/groq_key
+# config.local.toml is gitignored and deep-merges over config.toml, so your key
+# never gets committed. Delete it to go local. Get a free key at console.groq.com.
 #
 # Only your actual dictations (between the two Option taps) are uploaded — the
-# warm mic is local-only and never sent. Get keys: console.groq.com + platform.openai.com.
+# warm mic is local-only and never sent. Prefer OpenAI for Write? Swap [formatting]
+# to command_base_url = "https://api.openai.com/v1", command_model = "gpt-4o-mini",
+# command_api_key_file = "~/.config/voice-to-text/openai_key".
 
 [transcription]
 backend = "cloud"           # dictation via Groq whisper-large-v3
 
 [formatting]
-command_base_url = "https://api.openai.com/v1"   # Write mode via OpenAI
-command_model = "gpt-4o-mini"
+command_base_url = "https://api.groq.com/openai/v1"   # Write via Groq gpt-oss-120b
+command_model = "openai/gpt-oss-120b"
+command_api_key_env = "GROQ_API_KEY"
+command_api_key_file = "~/.config/voice-to-text/groq_key"
