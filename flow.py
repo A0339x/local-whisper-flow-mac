@@ -261,6 +261,17 @@ def log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
+def notify(title: str, subtitle: str, message: str) -> None:
+    """Show a macOS notification, but NEVER raise. When the app runs as a bare
+    interpreter (not a bundled .app) rumps can't reach the notification center
+    and throws — which previously crashed the processing thread on any error.
+    Fall back to the log so the message isn't lost."""
+    try:
+        rumps.notification(title, subtitle, message)
+    except Exception:
+        log(f"  [{title}] {subtitle}: {message}")
+
+
 _SOUND_CACHE: dict = {}
 
 
@@ -909,7 +920,7 @@ class HistoryController(NSObject):
         if 0 <= r < len(self._entries):
             txt = self._entries[r].get("text", "")
             clipboard_set(txt)
-            rumps.notification("Voice-To-Text", "Copied to clipboard", txt[:60])
+            notify("Voice-To-Text", "Copied to clipboard", txt[:60])
 
     def clearAll_(self, sender):  # noqa: N802
         history_clear()
@@ -1719,18 +1730,21 @@ list…), do exactly that. If it's unclear, make the smallest reasonable edit.""
 
 
 def _resolve_api_key(api_key_env: str, api_key_file: str) -> str:
-    """Find the API key: env var first, then a key file. A file is the reliable
-    path for a Login Item / GUI app, which does NOT inherit the shell env."""
-    key = os.environ.get(api_key_env or "", "").strip()
-    if key:
-        return key
+    """Find the API key: the configured key FILE first, then the env var.
+
+    File-first on purpose: the file is the explicit per-app setup the config
+    points to, and the app launches as a GUI process that doesn't see the shell
+    env anyway. A stale/leftover shell env var must never shadow the key file
+    (that caused a 401 when an old GROQ_API_KEY was still exported)."""
     path = (api_key_file or "").strip()
     if path:
         try:
-            return Path(path).expanduser().read_text().strip()
+            key = Path(path).expanduser().read_text().strip()
+            if key:
+                return key
         except Exception:
-            return ""
-    return ""
+            pass
+    return os.environ.get(api_key_env or "", "").strip()
 
 
 def chat_complete(messages: list, url: str, model: str, temperature: float,
@@ -2475,7 +2489,7 @@ class FlowApp(rumps.App):
 
     def apply_mic(self, spec: str) -> None:
         if self.state != IDLE:
-            rumps.notification("Voice-To-Text", "Busy", "Finish the current dictation first.")
+            notify("Voice-To-Text", "Busy", "Finish the current dictation first.")
             return
         device = resolve_input_device(spec)
         try:
@@ -2485,19 +2499,19 @@ class FlowApp(rumps.App):
         try:
             self.recorder.set_device(device)
         except Exception as e:
-            rumps.notification("Voice-To-Text", "Could not open that mic", str(e))
+            notify("Voice-To-Text", "Could not open that mic", str(e))
             return
         self.cfg["audio"]["input_device"] = spec
         self._persist("input_device", spec)
         self._populate_mic_menu()
         log(f"mic switched -> {name} ({spec})")
-        rumps.notification("Voice-To-Text", "Microphone set", name)
+        notify("Voice-To-Text", "Microphone set", name)
 
     def apply_warm(self, on: bool) -> None:
         try:
             self.recorder.set_warm(on)
         except Exception as e:
-            rumps.notification("Voice-To-Text", "Could not change mic mode", str(e))
+            notify("Voice-To-Text", "Could not change mic mode", str(e))
             return
         self.cfg["audio"]["warm_mic"] = on
         self._persist("warm_mic", on)
@@ -2752,7 +2766,7 @@ class FlowApp(rumps.App):
         except Exception as e:
             play(SOUND_ERROR)
             self.set_state(IDLE, "Idle")
-            rumps.notification("Voice-To-Text", "Could not start recording", str(e))
+            notify("Voice-To-Text", "Could not start recording", str(e))
             return
         AppHelper.callAfter(self.hud.show)
         self.set_state(RECORDING, "Recording… (tap hotkey or ✓ to stop)")
@@ -2845,7 +2859,7 @@ class FlowApp(rumps.App):
         except Exception as e:
             play(SOUND_ERROR)
             self.set_state(IDLE, "Idle")
-            rumps.notification("Voice-To-Text", "Could not start recording", str(e))
+            notify("Voice-To-Text", "Could not start recording", str(e))
             return
         if self.cfg["sounds"]["enabled"]:
             play(SOUND_START)
@@ -2967,7 +2981,7 @@ class FlowApp(rumps.App):
         except Exception as e:
             play(SOUND_ERROR)
             self.set_state(IDLE, "Error")
-            rumps.notification("Voice-To-Text", "Command failed", str(e))
+            notify("Voice-To-Text", "Command failed", str(e))
 
     def _maybe_prepend_space(self, text: str) -> str:
         """Add a leading space only when continuing in the same spot — i.e. a
@@ -3084,7 +3098,7 @@ class FlowApp(rumps.App):
         except Exception as e:
             play(SOUND_ERROR)
             self.set_state(IDLE, "Error")
-            rumps.notification("Voice-To-Text", "Something went wrong", str(e))
+            notify("Voice-To-Text", "Something went wrong", str(e))
 
 
 def main() -> None:
