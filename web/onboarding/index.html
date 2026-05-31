@@ -167,7 +167,12 @@ h1 em{font-style:italic;color:var(--amber-hi)}
   white-space:nowrap;background:var(--bg-raise);border:1px solid var(--hair);padding:5px 11px;border-radius:8px}
 .kchip{font-weight:600;font-size:11px;color:var(--muted)}
 .kchip.set{color:var(--sage)}
-.prow{transition:border-color .4s var(--ease),box-shadow .4s var(--ease),background .4s var(--ease)}
+.prow{position:relative;overflow:hidden;transition:border-color .4s var(--ease),box-shadow .4s var(--ease),background .4s var(--ease)}
+.dlbar{position:absolute;left:0;bottom:0;height:3px;width:0;border-radius:0 3px 0 0;
+  background:linear-gradient(90deg,var(--amber-deep),var(--amber-hi));transition:width .5s var(--ease)}
+.prow.granted .dlbar{background:var(--sage)}
+.dlrow{display:flex;align-items:center;gap:14px;margin-top:18px}
+.dlhint{font-size:12px;color:var(--muted);line-height:1.45;max-width:40ch}
 .prow.granted{border-color:rgba(95,174,116,.65);
   box-shadow:0 0 0 1px rgba(95,174,116,.45), 0 0 22px rgba(95,174,116,.18);
   background:linear-gradient(180deg,rgba(95,174,116,.08),var(--bg-card))}
@@ -348,13 +353,13 @@ button{font-family:inherit;cursor:pointer;border:none;font-size:13.5px;font-weig
     <section class="step" data-key="download">
       <div class="kicker">Almost there</div>
       <h1>Two models, <em>one time</em>.</h1>
-      <p class="lede">Offline mode runs both jobs on your Mac, so it uses two models. They download once (~16&nbsp;GB total), then work forever with no internet.</p>
+      <p class="lede">Offline mode runs both jobs on your Mac, so it uses two models. Download them now (~16&nbsp;GB total), then they work forever with no internet.</p>
       <div class="content">
         <div class="perm">
-          <div class="prow"><div class="ico">🎙️</div><div class="tx"><b>Whisper — speech to text</b><span>Your dictation, transcribed on-device.</span></div><div class="size">~3 GB</div></div>
-          <div class="prow"><div class="ico">🧠</div><div class="tx"><b>gpt-oss:20b — AI writing &amp; edits</b><span>The Left-Option drafts, served by Ollama.</span></div><div class="size">~13 GB</div></div>
+          <div class="prow" id="dl-whisper"><div class="ico">🎙️</div><div class="tx"><b>Whisper — speech to text</b><span>Your dictation, transcribed on-device.</span></div><div class="size" id="size-whisper">~3 GB</div><div class="dlbar" id="bar-whisper"></div></div>
+          <div class="prow" id="dl-gpt"><div class="ico">🧠</div><div class="tx"><b>gpt-oss:20b — AI writing &amp; edits</b><span>The Left-Option drafts, served by Ollama.</span></div><div class="size" id="size-gpt">~13 GB</div><div class="dlbar" id="bar-gpt"></div></div>
         </div>
-        <div class="modenote offline" id="dlNote"><span class="tag">🟢 On-device</span> — the setup script fetches both and installs Ollama (the engine for gpt-oss). Nothing is sent anywhere; it even works on a plane.</div>
+        <div class="dlrow"><button class="go" id="dlBtn" data-act="downloadModels">Download now</button><span class="dlhint" id="dlHint">Or skip — Whisper downloads on your first dictation; gpt-oss via the installer.</span></div>
       </div>
     </section>
 
@@ -433,7 +438,17 @@ document.addEventListener('click', e=>{
   else if(act==='recordKey'){ el.textContent='Press a key…'; send({action:'recordKey', which:el.dataset.which}); }
   else if(act==='enterKey') send({action:'enterKey', which:el.dataset.which});
   else if(act==='toggleMode'){ setOffline(!offline); send({action:'setOffline', offline:offline}); }
+  else if(act==='downloadModels'){ if(el.disabled) return; el.textContent='Downloading…'; el.disabled=true; send({action:'downloadModels'}); }
 });
+window.flowDownload=function(which, pct, done){
+  const bar=document.getElementById('bar-'+which), chip=document.getElementById('size-'+which), row=document.getElementById('dl-'+which);
+  if(done){ if(bar) bar.style.width='100%'; if(chip) chip.textContent='✓ Ready'; if(row) row.classList.add('granted'); }
+  else if(typeof pct==='number'){ if(bar) bar.style.width=Math.max(2,Math.min(100,pct))+'%'; if(chip) chip.textContent=Math.round(pct)+'%'; }
+};
+window.flowDownloadDone=function(){
+  const b=document.getElementById('dlBtn'); if(b){ b.textContent='✓ Downloaded'; b.classList.add('granted'); b.disabled=true; }
+  const h=document.getElementById('dlHint'); if(h) h.textContent='Both models are on your Mac — you’re fully offline-ready.';
+};
 
 function setOffline(off){
   offline=off;

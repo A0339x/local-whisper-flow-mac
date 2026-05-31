@@ -1149,6 +1149,13 @@ class OnboardingController(NSObject):
             "groq": self._key_present("groq"),
         })
         self._eval_js(f"window.flowInit({payload})")
+        w, g = self._whisper_present(), self._gpt_present()
+        if w:
+            self._eval_js("window.flowDownload('whisper', 100, true)")
+        if g:
+            self._eval_js("window.flowDownload('gpt', 100, true)")
+        if w and g:
+            self._eval_js("window.flowDownloadDone()")
 
     @objc.python_method
     def _handle_bridge(self, msg: dict) -> None:
@@ -1170,6 +1177,8 @@ class OnboardingController(NSObject):
             self._record_key(str(msg.get("which", "")))
         elif action == "enterKey":
             self._prompt_key(str(msg.get("which", "")))
+        elif action == "downloadModels":
+            self._download_models()
         elif action == "finish":
             self._finish_webview()
 
@@ -1216,6 +1225,102 @@ class OnboardingController(NSObject):
         win = getattr(self, "_web_window", None)
         if win is not None:
             AppHelper.callAfter(win.close)
+
+    # ── on-device model download (offline step) ──
+    @objc.python_method
+    def _whisper_repo(self) -> str:
+        return self._app.cfg.get("transcription", {}).get(
+            "model", "mlx-community/whisper-large-v3-mlx")
+
+    @objc.python_method
+    def _whisper_cache(self):
+        repo = self._whisper_repo()
+        return Path.home() / ".cache/huggingface/hub" / ("models--" + repo.replace("/", "--"))
+
+    @objc.python_method
+    def _whisper_present(self) -> bool:
+        cache = self._whisper_cache()
+        try:
+            return cache.exists() and sum(
+                f.stat().st_size for f in cache.rglob("*") if f.is_file()) > 1.0e9
+        except Exception:
+            return False
+
+    @objc.python_method
+    def _gpt_present(self) -> bool:
+        try:
+            return bool(self._app._local_write_ready())
+        except Exception:
+            return False
+
+    @objc.python_method
+    def _download_models(self) -> None:
+        if getattr(self, "_dl_running", False):
+            return
+        self._dl_running = True
+        threading.Thread(target=self._dl_worker, daemon=True).start()
+
+    @objc.python_method
+    def _dl_worker(self) -> None:
+        try:
+            self._dl_whisper()
+            self._dl_gpt()
+            self._eval_js("window.flowDownloadDone()")
+        except Exception as e:
+            log(f"  model download error: {e}")
+        finally:
+            self._dl_running = False
+
+    @objc.python_method
+    def _dl_whisper(self) -> None:
+        if self._whisper_present():
+            self._eval_js("window.flowDownload('whisper', 100, true)")
+            return
+        cache, est = self._whisper_cache(), 3.05e9
+        stop = threading.Event()
+
+        def poll():
+            while not stop.is_set():
+                try:
+                    size = sum(f.stat().st_size for f in cache.rglob("*") if f.is_file()) if cache.exists() else 0
+                except Exception:
+                    size = 0
+                pct = min(99.0, size / est * 100)
+                self._eval_js(f"window.flowDownload('whisper', {pct:.1f}, false)")
+                time.sleep(0.5)
+
+        threading.Thread(target=poll, daemon=True).start()
+        try:
+            from huggingface_hub import snapshot_download
+            snapshot_download(self._whisper_repo())
+        except Exception as e:
+            log(f"  whisper download: {e}")
+        stop.set()
+        self._eval_js("window.flowDownload('whisper', 100, true)")
+
+    @objc.python_method
+    def _dl_gpt(self) -> None:
+        if self._gpt_present():
+            self._eval_js("window.flowDownload('gpt', 100, true)")
+            return
+        f = self._app.cfg.get("formatting", {})
+        model = (f.get("model") or "gpt-oss:20b")
+        url = (f.get("ollama_url") or "http://localhost:11434").rstrip("/") + "/api/pull"
+        try:
+            with requests.post(url, json={"name": model, "stream": True}, stream=True, timeout=None) as r:
+                for line in r.iter_lines():
+                    if not line:
+                        continue
+                    try:
+                        d = json.loads(line)
+                    except Exception:
+                        continue
+                    total, completed = d.get("total"), d.get("completed")
+                    if total and completed:
+                        self._eval_js(f"window.flowDownload('gpt', {completed / total * 100:.1f}, false)")
+            self._eval_js("window.flowDownload('gpt', 100, true)")
+        except Exception as e:
+            log(f"  gpt-oss pull: {e}")
 
     @objc.python_method
     def _build_steps(self) -> list:
