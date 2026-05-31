@@ -966,12 +966,27 @@ class OnboardingController(NSObject):
             win.setLevel_(0)
             self._window = win
         self._step = 0
+        self._steps = self._build_steps()
         self._render()
         self._window.setCollectionBehavior_(NSWindowCollectionBehaviorMoveToActiveSpace)
         NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
         self._window.center()
         self._window.makeKeyAndOrderFront_(None)
         self._window.orderFrontRegardless()
+
+    @objc.python_method
+    def _build_steps(self) -> list:
+        """Onboarding steps, tailored to the edition. The model-download step only
+        applies to LOCAL dictation; the cloud edition has nothing to download. (The
+        old voice-calibration steps fed the removed excitement feature and are
+        gone.)"""
+        cloud = (self._app.cfg.get("transcription", {})
+                 .get("backend", "local").lower() == "cloud")
+        steps = ["welcome", "permissions", "shortcut"]
+        if not cloud:
+            steps.append("download")
+        steps.append("done")
+        return steps
 
     @objc.python_method
     def _label(self, parent, text, frame, size=13, bold=False, secondary=False):
@@ -1004,13 +1019,13 @@ class OnboardingController(NSObject):
     @objc.python_method
     def _render(self) -> None:
         cv = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, OB_W, OB_H))
-        step = OB_STEPS[self._step]
+        step = self._steps[self._step]
         getattr(self, f"_step_{step}")(cv)
 
         # Footer navigation.
         if self._step > 0:
             self._button(cv, "Back", NSMakeRect(20, 20, 90, 32), "back:")
-        last = self._step == len(OB_STEPS) - 1
+        last = self._step == len(self._steps) - 1
         self._next_btn = self._button(
             cv,
             "Finish" if last else "Next",
@@ -1019,7 +1034,7 @@ class OnboardingController(NSObject):
         )
         self._label(
             cv,
-            f"Step {self._step + 1} of {len(OB_STEPS)}",
+            f"Step {self._step + 1} of {len(self._steps)}",
             NSMakeRect(OB_W / 2 - 60, 26, 120, 18),
             size=11,
             secondary=True,
@@ -1028,7 +1043,7 @@ class OnboardingController(NSObject):
 
     # ── navigation ──
     def next_(self, sender):  # noqa: N802
-        if self._step < len(OB_STEPS) - 1:
+        if self._step < len(self._steps) - 1:
             self._step += 1
             self._render()
 
@@ -1038,7 +1053,6 @@ class OnboardingController(NSObject):
             self._render()
 
     def finish_(self, sender):  # noqa: N802
-        self._apply_calibration()
         try:
             ONBOARDED_PATH.write_text("done\n")
         except Exception:
