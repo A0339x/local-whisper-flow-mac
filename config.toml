@@ -31,9 +31,22 @@ preroll_seconds = 0.5
 input_device = "builtin"
 
 [transcription]
-# Any mlx-community Whisper model on Hugging Face. Downloaded & cached on first use.
-# ...-v3-mlx = most accurate; with streaming on, its transcription happens while
-# you talk so the stop still feels snappy. ...-turbo = faster raw model.
+# Transcription backend: "local" (Whisper via Apple MLX, on-device — needs Apple
+# Silicon) or "cloud" (an OpenAI-compatible /audio/transcriptions endpoint — runs
+# on ANY machine, no GPU). Local is the default and is fastest on a powerful Mac.
+backend = "local"
+# Cloud STT (used only when backend = "cloud"). Groq serves the EXACT
+# whisper-large-v3 over an OpenAI-compatible API — very fast + cheap (~$0.0019/min).
+# Get a key at console.groq.com, then:
+#   printf 'gsk_YOURKEY' > ~/.config/voice-to-text/groq_key && chmod 600 ~/.config/voice-to-text/groq_key
+# To A/B OpenAI's gpt-4o-transcribe instead: cloud_base_url = "https://api.openai.com/v1",
+# cloud_model = "gpt-4o-transcribe", and point the key file at your OpenAI key.
+cloud_base_url = "https://api.groq.com/openai/v1"
+cloud_model = "whisper-large-v3"
+cloud_api_key_env = "GROQ_API_KEY"
+cloud_api_key_file = "~/.config/voice-to-text/groq_key"
+# Local Whisper model (backend = "local"). Any mlx-community Whisper model on HF;
+# downloaded & cached on first use. ...-v3-mlx = most accurate.
 model = "mlx-community/whisper-large-v3-mlx"
 # Force a language (faster, more accurate) or set "" to auto-detect.
 language = "en"

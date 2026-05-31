@@ -1490,6 +1490,45 @@ def transcribe(audio: np.ndarray, model: str, language: str, vocabulary: str = "
     return mlx_whisper.transcribe(audio, path_or_hf_repo=model, **opts)
 
 
+def transcribe_remote(audio: np.ndarray, base_url: str, model: str, api_key: str,
+                      language: str = "", vocabulary: str = "") -> dict:
+    """Transcribe via an OpenAI-compatible /audio/transcriptions endpoint — Groq
+    (whisper-large-v3, the exact local model, very fast/cheap) or OpenAI
+    (gpt-4o-transcribe). Encodes the float32 clip to a 16-bit WAV in memory and
+    uploads it. Returns {"text": ...} like transcribe(), so it's a drop-in. Lets
+    the app run on any machine with no on-device model."""
+    import io
+    import wave
+
+    if audio.size == 0:
+        return {"text": "", "segments": []}
+    pcm = (np.clip(audio, -1.0, 1.0) * 32767.0).astype("<i2")
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(SAMPLE_RATE)
+        w.writeframes(pcm.tobytes())
+    buf.seek(0)
+    data = {"model": model, "response_format": "json"}
+    if language:
+        data["language"] = language
+    if vocabulary:
+        data["prompt"] = f"Glossary: {vocabulary}."  # OpenAI-compatible biasing
+    resp = requests.post(
+        f"{base_url.rstrip('/')}/audio/transcriptions",
+        headers={"Authorization": f"Bearer {api_key}"},
+        files={"file": ("audio.wav", buf, "audio/wav")},
+        data=data,
+        timeout=60,
+    )
+    resp.raise_for_status()
+    try:
+        return {"text": (resp.json().get("text") or "").strip()}
+    except Exception:
+        return {"text": resp.text.strip()}
+
+
 def transcript_with_paragraphs(result: dict, pause_seconds: float) -> str:
     """Join Whisper segments, inserting a paragraph break on long spoken pauses."""
     segments = result.get("segments") or []
@@ -2686,6 +2725,23 @@ class FlowApp(rumps.App):
                 play(SOUND_CANCEL)
             self.set_state(IDLE, "Cancelled")
 
+    def _cloud_stt(self):
+        """Return (base_url, model, key) if cloud transcription is configured and a
+        key is available, else None (→ local Whisper). Lets the app run dictation
+        on any machine via an OpenAI-compatible STT (Groq whisper-large-v3)."""
+        tcfg = self.cfg["transcription"]
+        if (tcfg.get("backend") or "local").lower() != "cloud":
+            return None
+        base = (tcfg.get("cloud_base_url") or "").strip()
+        if not base:
+            return None
+        key = _resolve_api_key(tcfg.get("cloud_api_key_env", "GROQ_API_KEY"),
+                               tcfg.get("cloud_api_key_file", ""))
+        if not key:
+            log("  cloud STT set but no key found — falling back to local Whisper")
+            return None
+        return (base, tcfg.get("cloud_model") or "whisper-large-v3", key)
+
     def _begin_recording(self) -> None:
         # Play the start cue FIRST — the moment you press the key — before any
         # work, so it feels instant. (afplay is non-blocking.)
@@ -2707,8 +2763,10 @@ class FlowApp(rumps.App):
         self._context_terms = []
         threading.Thread(target=self._capture_context, daemon=True).start()
         # Streaming: transcribe finished chunks at pauses while you talk, so
-        # stopping leaves almost nothing left to do.
-        self._streaming = bool(self.cfg["transcription"].get("streaming", True))
+        # stopping leaves almost nothing left to do. (Local-only; cloud STT uploads
+        # the whole clip at stop instead.)
+        self._streaming = self._cloud_stt() is None and bool(
+            self.cfg["transcription"].get("streaming", True))
         self._stream_committed = ""
         self._stream_commit_n = 0
         self._stream_thread = None
@@ -2808,8 +2866,10 @@ class FlowApp(rumps.App):
                 log(f"  context captured: {len(self._command_context)} chars")
             threading.Thread(target=_grab_context, daemon=True).start()
         # Stream the spoken instruction the same way dictation does, so a longer
-        # instruction is mostly transcribed by the time you tap to stop.
-        self._streaming = bool(self.cfg["transcription"].get("streaming", True))
+        # instruction is mostly transcribed by the time you tap to stop. (Local
+        # only; cloud STT uploads the whole clip at stop.)
+        self._streaming = self._cloud_stt() is None and bool(
+            self.cfg["transcription"].get("streaming", True))
         self._stream_committed = ""
         self._stream_commit_n = 0
         self._stream_thread = None
@@ -2835,7 +2895,12 @@ class FlowApp(rumps.App):
                 return
             tcfg = self.cfg["transcription"]
             model, lang, gloss = tcfg["model"], tcfg["language"], tcfg.get("vocabulary", "")
-            if getattr(self, "_streaming", False):
+            cloud = self._cloud_stt()
+            if cloud:
+                base_url, cmodel, key = cloud
+                instruction = (transcribe_remote(audio, base_url, cmodel, key, lang, gloss)
+                               .get("text") or "").strip()
+            elif getattr(self, "_streaming", False):
                 # Most of a longer instruction was transcribed while you talked;
                 # finalize just the tail since the last committed pause.
                 th = getattr(self, "_stream_thread", None)
@@ -2974,7 +3039,14 @@ class FlowApp(rumps.App):
             if ctx:
                 glossary = (glossary + ", " + ", ".join(ctx)).strip(", ")
             tone_cfg = self.cfg.get("tone", {})
-            if getattr(self, "_streaming", False):
+            cloud = self._cloud_stt()
+            if cloud:
+                base_url, cmodel, key = cloud
+                self.status_item.title = "Transcribing…"
+                text = (transcribe_remote(audio, base_url, cmodel, key, lang, glossary)
+                        .get("text") or "").strip()
+                log(f"  transcript (cloud {cmodel}): {text!r}")
+            elif getattr(self, "_streaming", False):
                 # Most chunks already transcribed while you talked — finalize just
                 # the tail since the last committed pause.
                 th = getattr(self, "_stream_thread", None)

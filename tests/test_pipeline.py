@@ -418,6 +418,30 @@ ok("keeps intentional triple 'no no no'",
    flow.collapse_repeats("no no no that is fine") == "no no no that is fine")
 ok("keeps normal sentence unchanged",
    flow.collapse_repeats("the meeting is at three") == "the meeting is at three")
+# Cloud STT backend (Groq / OpenAI-compatible) — mock the HTTP call
+import io as _io, wave as _wave
+_cap = {}
+class _FakeR:
+    def raise_for_status(self): pass
+    def json(self): return {"text": "  cloud text  "}
+def _fake_post(url, headers=None, files=None, data=None, timeout=None):
+    _cap["url"] = url; _cap["auth"] = (headers or {}).get("Authorization", "")
+    with _wave.open(_io.BytesIO(files["file"][1].read())) as w:
+        _cap["rate"] = w.getframerate()
+    return _FakeR()
+_orig_post = flow.requests.post
+flow.requests.post = _fake_post
+try:
+    _a = (np.sin(np.linspace(0, 40, flow.SAMPLE_RATE // 2)) * 0.3).astype("float32")
+    _r = flow.transcribe_remote(_a, "https://api.groq.com/openai/v1", "whisper-large-v3", "gsk_k", "en")
+    ok("transcribe_remote returns clean text", _r.get("text") == "cloud text")
+    ok("transcribe_remote hits /audio/transcriptions", _cap["url"].endswith("/audio/transcriptions"))
+    ok("transcribe_remote sends Bearer key", _cap["auth"] == "Bearer gsk_k")
+    ok("transcribe_remote uploads 16kHz WAV", _cap["rate"] == flow.SAMPLE_RATE)
+    ok("transcribe_remote empty audio → empty",
+       flow.transcribe_remote(np.zeros(0, dtype="float32"), "x", "m", "k").get("text") == "")
+finally:
+    flow.requests.post = _orig_post
 
 # ── SUMMARY ──────────────────────────────────────────────────────────────────
 print("\n" + "=" * 72)
