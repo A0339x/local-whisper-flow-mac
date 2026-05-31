@@ -70,6 +70,7 @@ from ApplicationServices import (
     AXUIElementCreateApplication,
     AXUIElementCreateSystemWide,
     AXUIElementCopyAttributeValue,
+    AXUIElementSetAttributeValue,
 )
 
 # ── Config ─────────────────────────────────────────────────────────────────────
@@ -1878,11 +1879,13 @@ def _clean_draft(text: str) -> str:
 
 def generate_text(instruction: str, url: str, model: str, style: str = "",
                   email: bool = False, base_url: str = "",
-                  api_key_env: str = "OPENAI_API_KEY", api_key_file: str = "") -> str:
+                  api_key_env: str = "OPENAI_API_KEY", api_key_file: str = "",
+                  context: str = "") -> str:
     """Draft fresh content from a spoken instruction (Command Mode, no selection).
 
     When `email` is False (a chat/message/note, not an email client), the draft
     is just the message body — no "Hi," opener, no "Thanks,"/"Best," sign-off.
+    `context` is optional on-screen text (e.g. the email being replied to).
     """
     if not (instruction and instruction.strip()):
         return ""
@@ -1894,9 +1897,18 @@ def generate_text(instruction: str, url: str, model: str, style: str = "",
                 "ONLY the message itself. Do NOT add a greeting line like \"Hi,\" "
                 "and do NOT add a sign-off like \"Thanks,\" or \"Best,\" on its own "
                 "line. Just the words a person would type into a chat box.")
+    if context:
+        sys += ("\n\nThe user is replying to or referencing something on their "
+                "screen. On-screen text is provided below. Use ONLY the relevant "
+                "part (e.g. the message being replied to) and IGNORE unrelated UI "
+                "text, menus, sidebars, or other people's unrelated messages.")
+    user = f"Write this for me: {instruction}"
+    if context:
+        user = (f"{user}\n\nOn-screen text (context — may include unrelated UI):\n"
+                f"\"\"\"\n{context}\n\"\"\"")
     messages = [
         {"role": "system", "content": sys},
-        {"role": "user", "content": f"Write this for me: {instruction}"},
+        {"role": "user", "content": user},
     ]
     out = chat_complete(messages, url, model, 0.5, base_url, api_key_env, api_key_file)
     if len(out) >= 2 and out[0] == out[-1] and out[0] in "\"'":
@@ -1995,6 +2007,72 @@ def focused_field_text(limit: int = 600) -> str:
     except Exception:
         pass
     return ""
+
+
+def read_window_context(limit: int = 6000, max_nodes: int = 2000,
+                        max_depth: int = 35, time_budget: float = 0.6) -> str:
+    """Best-effort read of the visible TEXT in the focused window via the
+    Accessibility API, so Command/Write mode can write context-aware replies.
+
+    Reads well in browsers and native apps (Chrome returns a full page in ~25ms);
+    sparse in locked-down Electron like Slack (returns little — that's fine, we
+    just write without context). Bounded by node/depth/time so it can never hang.
+    Never raises."""
+    try:
+        app = NSWorkspace.sharedWorkspace().frontmostApplication()
+        if app is None:
+            return ""
+        ax = AXUIElementCreateApplication(app.processIdentifier())
+        try:  # ask Chromium/Electron to build its full a11y tree (best-effort)
+            AXUIElementSetAttributeValue(ax, "AXManualAccessibility", True)
+        except Exception:
+            pass
+        err, win = AXUIElementCopyAttributeValue(ax, "AXFocusedWindow", None)
+        if err != 0 or win is None:
+            return ""
+        deadline = time.time() + time_budget
+        parts, seen, total, n = [], set(), 0, 0
+        stack = [(win, 0)]
+        while stack and n < max_nodes and total < limit and time.time() < deadline:
+            node, d = stack.pop()
+            n += 1
+            for a in ("AXValue", "AXTitle", "AXDescription"):
+                err, v = AXUIElementCopyAttributeValue(node, a, None)
+                if err == 0 and isinstance(v, str):
+                    s = v.strip()
+                    if len(s) >= 2 and s not in seen:
+                        seen.add(s)
+                        parts.append(s)
+                        total += len(s) + 1
+                    break
+            if d < max_depth:
+                err, kids = AXUIElementCopyAttributeValue(node, "AXChildren", None)
+                if err == 0 and kids:
+                    for k in reversed(list(kids)):  # pre-order = reading order
+                        stack.append((k, d + 1))
+        return "\n".join(parts)[:limit]
+    except Exception:
+        return ""
+
+
+# Instruction wording that means "use what's on my screen" — only then do we send
+# the captured context to the model (so a fresh write never inherits the screen).
+_CONTEXT_INTENT = re.compile(
+    r"(?i)\b("
+    r"repl(y|ies|ying)|respond(ing)?|response|"
+    r"answer(ing)?\s+(this|that|the|them|their|his|her|it)|"
+    r"based on (this|that|the|it|what)|"
+    r"(to|about|regarding)\s+(this|that|the|their|his|her)\s+"
+    r"(email|message|thread|chat|conversation|note|dm|text|question|point)|"
+    r"this\s+(email|message|thread|chat|conversation)|"
+    r"what\s+(they|he|she)\s+(said|wrote|asked|mentioned)|"
+    r"their\s+(email|message|point|question|note)"
+    r")\b")
+
+
+def wants_context(instruction: str) -> bool:
+    """True if the spoken instruction implies it should use on-screen context."""
+    return bool(_CONTEXT_INTENT.search(instruction or ""))
 
 
 # Common capitalized words to ignore when harvesting proper nouns from context.
@@ -2654,6 +2732,14 @@ class FlowApp(rumps.App):
         else:
             self.set_state(COMMAND, "Write… (say what to draft, tap again)")
             log("✍️ write mode — no selection, will generate")
+        # Read on-screen text off-thread (AX, ~25ms in Chrome) WHILE you speak,
+        # so a "reply to this" draft has the context with zero added latency. Only
+        # for write/generate mode (edits already have the selection as context).
+        self._command_context = ""
+        if selection is None:
+            def _grab_context() -> None:
+                self._command_context = read_window_context()
+            threading.Thread(target=_grab_context, daemon=True).start()
         # Stream the spoken instruction the same way dictation does, so a longer
         # instruction is mostly transcribed by the time you tap to stop.
         self._streaming = bool(self.cfg["transcription"].get("streaming", True))
@@ -2715,10 +2801,17 @@ class FlowApp(rumps.App):
                 app_ctx = getattr(self, "_command_app", ("", "", ""))
                 style = style_for_app(self.cfg.get("styles", {}), *app_ctx)
                 email = is_email_context(*app_ctx)
+                # Use captured on-screen context only when the instruction asks for
+                # it ("reply to this", "based on the email") — never on a fresh write.
+                ctx = ""
+                if wants_context(instruction):
+                    ctx = (getattr(self, "_command_context", "") or "")[:6000]
+                    if ctx:
+                        log(f"  + on-screen context ({len(ctx)} chars)")
                 result = generate_text(instruction, fcfg["ollama_url"], cmd_model,
                                        style, email=email, base_url=base_url,
-                                       api_key_env=key_env, api_key_file=key_file)
-                log(f"  drafted ({cmd_model} {where}, email={email}) → {result!r}")
+                                       api_key_env=key_env, api_key_file=key_file, context=ctx)
+                log(f"  drafted ({cmd_model} {where}, email={email}, ctx={bool(ctx)}) → {result!r}")
             else:
                 self.status_item.title = "Editing…"
                 result = apply_command(instruction, self._command_selection,

@@ -393,6 +393,16 @@ try:
 except RuntimeError:
     _raised = True
 ok("cloud path with no key raises clean error", _raised)
+# Reply-aware context: intent detection gates whether on-screen text is used
+ok("intent: 'reply to this email'", flow.wants_context("reply to this email saying I'll be there"))
+ok("intent: 'respond that...'", flow.wants_context("respond that I agree"))
+ok("intent: 'answer their question'", flow.wants_context("answer their question about pricing"))
+ok("intent: 'based on this'", flow.wants_context("based on this write a short summary"))
+ok("intent: 'write a reply'", flow.wants_context("write a reply"))
+ok("NO intent: fresh email", not flow.wants_context("email my boss I'll be late"))
+ok("NO intent: 'send this to the team'", not flow.wants_context("send this to the team"))
+ok("NO intent: thank you note", not flow.wants_context("write a thank you note"))
+ok("read_window_context never raises", isinstance(flow.read_window_context(time_budget=0.1), str))
 
 # ── SUMMARY ──────────────────────────────────────────────────────────────────
 print("\n" + "=" * 72)
