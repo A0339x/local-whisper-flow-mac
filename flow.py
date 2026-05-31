@@ -2009,8 +2009,8 @@ def focused_field_text(limit: int = 600) -> str:
     return ""
 
 
-def read_window_context(limit: int = 6000, max_nodes: int = 2000,
-                        max_depth: int = 35, time_budget: float = 0.6) -> str:
+def read_window_context(limit: int = 12000, max_nodes: int = 5000,
+                        max_depth: int = 40, time_budget: float = 1.0) -> str:
     """Best-effort read of the visible TEXT in the focused window via the
     Accessibility API, so Command/Write mode can write context-aware replies.
 
@@ -2057,17 +2057,22 @@ def read_window_context(limit: int = 6000, max_nodes: int = 2000,
 
 # Instruction wording that means "use what's on my screen" — only then do we send
 # the captured context to the model (so a fresh write never inherits the screen).
+# Covers reply/follow-up verbs and demonstratives that point at on-screen content
+# ("follow up with this", "get back to them", "tell them", "reply to this email").
 _CONTEXT_INTENT = re.compile(
-    r"(?i)\b("
-    r"repl(y|ies|ying)|respond(ing)?|response|"
-    r"answer(ing)?\s+(this|that|the|them|their|his|her|it)|"
-    r"based on (this|that|the|it|what)|"
-    r"(to|about|regarding)\s+(this|that|the|their|his|her)\s+"
-    r"(email|message|thread|chat|conversation|note|dm|text|question|point)|"
-    r"this\s+(email|message|thread|chat|conversation)|"
-    r"what\s+(they|he|she)\s+(said|wrote|asked|mentioned)|"
-    r"their\s+(email|message|point|question|note)"
-    r")\b")
+    r"(?i)("
+    r"\brepl(y|ies|ying)\b|\brespond(ing)?\b|\bresponse\b|"
+    r"\bfollow(ing)?[\s-]?up\b|\bcircle back\b|\bget(ting)? back to\b|\bwrite back\b|"
+    r"\bget back to (them|him|her|this)\b|"
+    r"\banswer(ing)?\s+(this|that|the|them|their|his|her|it)\b|"
+    r"\bbased on (this|that|the|it|what)\b|"
+    r"\b(to|with|about|regarding)\s+(this|that|it|them|their|his|her)\b|"
+    r"\bthis\s+(email|message|thread|chat|conversation|one|sender|person)\b|"
+    r"\b(tell|ask|thank|remind|message)\s+(them|him|her)\b|"
+    r"\blet\s+(them|him|her)\s+know\b|"
+    r"\bwhat\s+(they|he|she)\s+(said|wrote|asked|mentioned|need|want|sent)\b|"
+    r"\btheir\s+(email|message|point|question|note|request)\b"
+    r")")
 
 
 def wants_context(instruction: str) -> bool:
@@ -2739,6 +2744,7 @@ class FlowApp(rumps.App):
         if selection is None:
             def _grab_context() -> None:
                 self._command_context = read_window_context()
+                log(f"  context captured: {len(self._command_context)} chars")
             threading.Thread(target=_grab_context, daemon=True).start()
         # Stream the spoken instruction the same way dictation does, so a longer
         # instruction is mostly transcribed by the time you tap to stop.
@@ -2805,7 +2811,7 @@ class FlowApp(rumps.App):
                 # it ("reply to this", "based on the email") — never on a fresh write.
                 ctx = ""
                 if wants_context(instruction):
-                    ctx = (getattr(self, "_command_context", "") or "")[:6000]
+                    ctx = (getattr(self, "_command_context", "") or "")[:12000]
                     if ctx:
                         log(f"  + on-screen context ({len(ctx)} chars)")
                 result = generate_text(instruction, fcfg["ollama_url"], cmd_model,

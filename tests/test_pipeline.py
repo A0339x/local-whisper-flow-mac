@@ -402,6 +402,12 @@ ok("intent: 'write a reply'", flow.wants_context("write a reply"))
 ok("NO intent: fresh email", not flow.wants_context("email my boss I'll be late"))
 ok("NO intent: 'send this to the team'", not flow.wants_context("send this to the team"))
 ok("NO intent: thank you note", not flow.wants_context("write a thank you note"))
+# Real phrasings that slipped through the first version (regression)
+ok("intent: 'follow up with this'", flow.wants_context("can you follow up with this"))
+ok("intent: 'follow up with them'", flow.wants_context("let's follow up with them"))
+ok("intent: 'get back to them'", flow.wants_context("get back to them and say I agree"))
+ok("intent: 'tell them'", flow.wants_context("tell them I'll be there"))
+ok("NO intent: 'write that the meeting is at 3'", not flow.wants_context("write that the meeting is at 3"))
 ok("read_window_context never raises", isinstance(flow.read_window_context(time_budget=0.1), str))
 
 # ── SUMMARY ──────────────────────────────────────────────────────────────────
