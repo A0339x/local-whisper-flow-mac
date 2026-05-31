@@ -310,7 +310,7 @@ button{font-family:inherit;cursor:pointer;border:none;font-size:13.5px;font-weig
     <section class="step" data-key="mode">
       <div class="kicker">Choose your mode</div>
       <h1>Private by <em>default</em>.</h1>
-      <p class="lede">Offline keeps everything on your Mac — no internet, no API key. It’s the default and what we recommend. Online uses AssemblyAI for fast dictation plus Groq for writing. Switch anytime from the menu bar.</p>
+      <p class="lede">Offline keeps everything on your Mac — no internet, no API key. It’s the default and what we recommend. Online runs dictation and AI writing on Groq’s cloud (one free key) — fast on any Mac, no downloads. Switch anytime from the menu bar.</p>
       <div class="content">
         <div class="modewrap">
           <div class="switch on" id="modeSwitch" data-act="toggleMode">
@@ -335,17 +335,16 @@ button{font-family:inherit;cursor:pointer;border:none;font-size:13.5px;font-weig
       </div>
     </section>
 
-    <!-- API KEYS (online) -->
+    <!-- API KEY (online) -->
     <section class="step" data-key="apikey">
-      <div class="kicker">Online keys</div>
-      <h1>Two free <em>keys</em>.</h1>
-      <p class="lede">Online mode streams dictation through AssemblyAI and writes/edits with Groq — both free to start, no card. Paste each below; they’re stored encrypted in your macOS Keychain, never uploaded or committed.</p>
+      <div class="kicker">Online key</div>
+      <h1>One free <em>key</em>.</h1>
+      <p class="lede">Online mode runs everything on Groq’s cloud — dictation (whisper-large-v3) and AI write/edit (gpt-oss-120b). One free key, no card. Paste it below; it’s stored encrypted in your macOS Keychain, never uploaded or committed.</p>
       <div class="content">
         <div class="perm">
-          <div class="prow"><div class="ico">🎙️</div><div class="tx"><b>AssemblyAI <span id="aaiStatus" class="kchip">— not set</span></b><span>Streaming dictation. Free key from assemblyai.com.</span></div><button class="go" data-act="enterKey" data-which="assemblyai">Paste key</button></div>
-          <div class="prow"><div class="ico">🧠</div><div class="tx"><b>Groq <span id="groqStatus" class="kchip">— not set</span></b><span>AI write &amp; edit (gpt-oss-120b). Free key from console.groq.com.</span></div><button class="go" data-act="enterKey" data-which="groq">Paste key</button></div>
+          <div class="prow"><div class="ico">🧠</div><div class="tx"><b>Groq <span id="groqStatus" class="kchip">— not set</span></b><span>Dictation + AI writing. Free key from console.groq.com.</span></div><button class="go" data-act="enterKey" data-which="groq">Paste key</button></div>
         </div>
-        <div class="modenote online"><span class="tag">🔒 Keychain</span> — keys are entered in a secure macOS prompt and stored encrypted. Skip Groq and AI writing falls back to the on-device model (sharper with Groq).</div>
+        <div class="modenote online"><span class="tag">🔒 Keychain</span> — the key is entered in a secure macOS prompt and stored encrypted. Nothing is written to the project; only your dictation is sent, to Groq.</div>
       </div>
     </section>
 
@@ -455,10 +454,10 @@ function setOffline(off){
   const sw=document.getElementById('modeSwitch'), note=document.getElementById('modeNote');
   sw.classList.toggle('on', off);
   if(off){ note.className='modenote offline'; note.innerHTML='<span class="tag">🟢 Offline</span> — dictation and AI writing both run on your Mac. No key needed.'; }
-  else{ note.className='modenote online'; note.innerHTML='<span class="tag">🔵 Online</span> — AssemblyAI streams your dictation; Groq writes. You’ll add two free keys next.'; }
+  else{ note.className='modenote online'; note.innerHTML='<span class="tag">🔵 Online</span> — Groq’s cloud handles dictation and AI writing. You’ll add one free key next.'; }
   const dm=document.getElementById('doneMode');
   if(dm) dm.innerHTML = off ? '<span class="ck">✓</span><span>Everything runs on your Mac — private and free.</span>'
-                            : '<span class="ck">✓</span><span>Online — AssemblyAI dictation + Groq writing.</span>';
+                            : '<span class="ck">✓</span><span>Online — Groq cloud (dictation + AI writing).</span>';
   buildRail(); render();
 }
 

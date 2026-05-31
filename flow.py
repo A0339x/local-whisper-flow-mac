@@ -3263,8 +3263,8 @@ class FlowApp(rumps.App):
                     "writing": f"Writing:  {wmodel} (on-device)"}
         wmodel = (f.get("command_model") or "cloud").split("/")[-1]
         return {"offline": False,
-                "mode": "Mode:  🔵 Online · AssemblyAI + Groq",
-                "voice": "Voice:  AssemblyAI streaming",
+                "mode": "Mode:  🔵 Online · cloud (Groq)",
+                "voice": "Voice:  Groq whisper-large-v3",
                 "writing": f"Writing:  {wmodel} (Groq)"}
 
     def _local_write_ready(self) -> bool:
@@ -3287,12 +3287,14 @@ class FlowApp(rumps.App):
 
     def apply_offline_mode(self, offline: bool) -> None:
         # Update the live config so it takes effect immediately — no restart.
-        # Online = AssemblyAI streaming dictation + Groq gpt-oss-120b writing.
+        # Online = Groq cloud: whisper-large-v3 dictation + gpt-oss-120b writing.
         t = self.cfg.setdefault("transcription", {})
-        t["backend"] = "local" if offline else "assemblyai"
+        t["backend"] = "local" if offline else "cloud"
         if not offline:
-            t.setdefault("assemblyai_api_key_env", "ASSEMBLYAI_API_KEY")
-            t.setdefault("assemblyai_api_key_file", "~/.config/voice-to-text/assemblyai_key")
+            t["cloud_base_url"] = "https://api.groq.com/openai/v1"
+            t["cloud_model"] = "whisper-large-v3"
+            t.setdefault("cloud_api_key_env", "GROQ_API_KEY")
+            t.setdefault("cloud_api_key_file", "~/.config/voice-to-text/groq_key")
         f = self.cfg.setdefault("formatting", {})
         if offline:
             f["command_base_url"] = ""
@@ -3304,15 +3306,15 @@ class FlowApp(rumps.App):
             f["command_api_key_file"] = "~/.config/voice-to-text/groq_key"
         self._write_mode_config(offline)
         self._refresh_mode_ui()
-        log(f"mode -> {'offline' if offline else 'online (assemblyai)'}")
+        log(f"mode -> {'offline' if offline else 'online (groq)'}")
         if offline:
             ready = self._local_write_ready()
             notify("Voice-To-Text", "🔒 Offline — 100% on your Mac",
                    "Dictation + AI writing now run on-device, no internet." if ready
                    else "Heads up: the on-device writing model isn't downloaded — run ./setup.sh --offline.")
         else:
-            notify("Voice-To-Text", "☁️ Online — AssemblyAI + Groq",
-                   "Dictation streams via AssemblyAI; AI writing uses Groq.")
+            notify("Voice-To-Text", "☁️ Online — Groq cloud",
+                   "Dictation + AI writing both run on Groq (one key).")
 
     def _write_mode_config(self, offline: bool) -> None:
         """Persist the mode to the gitignored config.local.toml (it deep-merges
@@ -3323,9 +3325,11 @@ class FlowApp(rumps.App):
                        "[transcription]\nbackend = \"local\"\n\n"
                        "[formatting]\ncommand_base_url = \"\"\ncommand_model = \"\"\n")
         else:
-            content = ("# Personal override (gitignored). Mode: ONLINE — AssemblyAI\n"
-                       "# streaming dictation + Groq gpt-oss-120b writing.\n"
-                       "[transcription]\nbackend = \"assemblyai\"\n\n"
+            content = ("# Personal override (gitignored). Mode: ONLINE — Groq cloud\n"
+                       "# (whisper-large-v3 dictation + gpt-oss-120b writing). One key.\n"
+                       "[transcription]\nbackend = \"cloud\"\n"
+                       "cloud_base_url = \"https://api.groq.com/openai/v1\"\n"
+                       "cloud_model = \"whisper-large-v3\"\n\n"
                        "[formatting]\ncommand_base_url = \"https://api.groq.com/openai/v1\"\n"
                        "command_model = \"openai/gpt-oss-120b\"\n"
                        "command_api_key_env = \"GROQ_API_KEY\"\n"

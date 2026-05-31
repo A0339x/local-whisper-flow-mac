@@ -5,8 +5,8 @@
 # Voice-To-Text — a local, free Wispr-Flow clone
 
 Dictation that runs **entirely on your Mac** by default — no cloud, no
-subscription, nothing leaving your machine. An optional **Online** mode adds
-ultra-fast streaming dictation (AssemblyAI, ~40 ms) when you want it.
+subscription, nothing leaving your machine. An optional **Online** mode runs it
+on Groq's cloud (one free key) for any Mac with no downloads.
 
 ## 🪄 Easiest install — just ask Claude
 
@@ -25,9 +25,9 @@ Apple won't let software toggle those). Then tap **Right Option** and start talk
 
 ---
 
-- 🎙️ **Speech-to-text** — **Offline:** OpenAI **Whisper large-v3** via Apple's
-  **MLX** framework (on-device, ~0.3 s). **Online:** **AssemblyAI** Universal-
-  Streaming (~40 ms — words finalize the instant you stop). Same hotkey either way.
+- 🎙️ **Speech-to-text** — OpenAI **Whisper large-v3**. **Offline:** on-device via
+  Apple's **MLX** framework (~0.3 s). **Online:** the same model on **Groq**
+  (~0.5 s, runs on any Mac). Same hotkey either way.
 - ⚡ **Raw & fast by design** — dictation pastes the transcription directly (light
   cleanup only: de-duplication + a hallucination guard), so it's quick and faithful
   to exactly what you said. Want it polished? Use the **Write key** (below), on demand.
@@ -71,16 +71,16 @@ mode) or during the first-run setup wizard.
 
 | | **🟢 Offline** (default) | **🔵 Online** |
 |---|---|---|
-| Dictation | Whisper **on-device** (~0.3 s) | **AssemblyAI** streaming (~40 ms) |
+| Dictation | Whisper **on-device** (~0.3 s) | Groq **`whisper-large-v3`** (~0.5 s) |
 | Write/edit (left ⌥) | local **`gpt-oss:20b`** | Groq **`gpt-oss-120b`** (sharper) |
-| Keys needed | **none** | free **AssemblyAI** + **Groq** key |
+| Keys needed | **none** | **one** free Groq key |
 | Hardware | 16 GB+ Apple Silicon | **any** Apple-Silicon Mac (no GPU) |
-| Privacy | **100% on-device** — nothing leaves your Mac | dictation → AssemblyAI, writing → Groq |
+| Privacy | **100% on-device** — nothing leaves your Mac | only your dictation goes to Groq |
 | Downloads | Whisper ~3 GB + gpt-oss:20b ~13 GB (once) | none |
 | Best for | privacy, working offline | speed, low-spec / shared machines |
 
 Both modes run the **same code** — the mode is just config. The installer collects
-any keys, writes a gitignored `config.local.toml`, and never commits them. Keys are
+any key, writes a gitignored `config.local.toml`, and never commits it. The key is
 stored in your **macOS Keychain** (encrypted), not in the project.
 
 ```bash
@@ -88,12 +88,16 @@ stored in your **macOS Keychain** (encrypted), not in the project.
 ./setup.sh --online   # or --offline   (non-interactive)
 ```
 
-**Online dictation uses AssemblyAI's Universal-Streaming** — it transcribes while
-you talk, so the text lands ~40 ms after you stop (vs ~0.5 s for a batch upload).
-On a real-voice benchmark it matched or beat local Whisper for accuracy. The
-**AI write/edit** side (left ⌥) uses Groq `gpt-oss-120b`; if you skip the Groq key,
-writing falls back to the on-device model. Prefer OpenAI or another writer? It's
-OpenAI-compatible — one-line swap in `config.local.toml`.
+**Online runs everything on Groq** — `whisper-large-v3` for dictation and
+`gpt-oss-120b` (OpenAI's open model) for the left-⌥ AI write/edit — over an
+OpenAI-compatible API, so **one free key** does both. Groq punctuates the whole
+clip at once and you can stop talking naturally without clipping the last word.
+Prefer OpenAI or another provider? It's OpenAI-compatible — one-line swap in
+`config.local.toml`.
+
+> **Experimental:** a streaming-dictation preset (`config.assemblyai.toml`, via
+> AssemblyAI) is also included for the lowest stop-to-text latency — but it
+> segments on pauses, so Groq is the recommended online mode.
 
 ---
 
@@ -232,7 +236,7 @@ Edit **`config.toml`** and relaunch.
 DICTATE (Right ⌥):
 hotkey ─▶ AudioRecorder (sounddevice, 16 kHz mono) ──▶ live level ─▶ waveform HUD
         └▶ Offline: Whisper large-v3 (mlx_whisper)        ── on-device, GPU/ANE
-           Online:  AssemblyAI Universal-Streaming        ── websocket, ~40 ms
+           Online:  Groq whisper-large-v3 (cloud API)     ── any Mac, ~0.5 s
               └▶ light cleanup ─▶ pbcopy + Cmd+V into the focused app
 
 WRITE / EDIT (Left ⌥):
