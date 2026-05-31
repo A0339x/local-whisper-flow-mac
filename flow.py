@@ -1747,6 +1747,7 @@ class AssemblyAIStream:
         self._url = self.URL.format(sr=sample_rate, model=model, eot=eot_silence_ms)
         self._ws = None
         self._turns: dict[int, str] = {}
+        self._open = False          # is a turn currently unfinalized?
         self._begun = threading.Event()
         self._final = threading.Event()
         self._t0 = None
@@ -1780,8 +1781,12 @@ class AssemblyAIStream:
                 self._begun.set()
             elif "turn_order" in d:
                 self._turns[d["turn_order"]] = d.get("transcript", "")
-                if d.get("end_of_turn") and self._t0 is not None:
-                    self._final.set()
+                if d.get("end_of_turn"):
+                    self._open = False
+                    if self._t0 is not None:
+                        self._final.set()
+                else:
+                    self._open = True
             elif t == "Termination":
                 self._final.set()
                 break
@@ -1805,6 +1810,13 @@ class AssemblyAIStream:
         Natural endpointing (with a low silence threshold) returns the complete
         transcript in ~270ms. `timeout` is just a safety cap."""
         self._t0 = time.perf_counter()
+        # Fast path: if you paused before tapping, the model already finalized the
+        # turn — the full transcript is in hand, so return it with zero delay.
+        if not self._open and self._turns:
+            self.close()
+            return " ".join(self._turns[k] for k in sorted(self._turns)).strip()
+        # Otherwise you tapped mid-word: nudge natural endpointing with trailing
+        # silence (ForceEndpoint would clip the last word) and wait briefly.
         try:
             self.send(b"\x00\x00" * int(self._tail / 1000 * self._sr))
         except Exception:
@@ -3278,9 +3290,13 @@ class FlowApp(rumps.App):
     def _start_aai_stream(self, key: str):
         """Open an AssemblyAI stream + a sender thread that pushes mic audio in
         real-time. Returns the stream, or None on failure (→ caller falls back)."""
-        model = self.cfg["transcription"].get("assemblyai_model", "universal-streaming-english")
+        tcfg = self.cfg["transcription"]
+        model = tcfg.get("assemblyai_model", "universal-streaming-english")
         try:
-            stream = AssemblyAIStream(key, model)
+            stream = AssemblyAIStream(
+                key, model,
+                eot_silence_ms=int(tcfg.get("assemblyai_eot_silence_ms", 150)),
+                tail_silence_ms=int(tcfg.get("assemblyai_tail_silence_ms", 400)))
             stream.start()
         except Exception as e:
             log(f"  AssemblyAI stream failed to start: {e} — falling back to local")
