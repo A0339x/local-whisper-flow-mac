@@ -2143,13 +2143,19 @@ def generate_text(instruction: str, url: str, model: str, style: str = "",
                 "and do NOT add a sign-off like \"Thanks,\" or \"Best,\" on its own "
                 "line. Just the words a person would type into a chat box.")
     if context:
-        sys += ("\n\nThe user is replying to or referencing something on their "
-                "screen. On-screen text is provided below. Use ONLY the relevant "
-                "part (e.g. the message being replied to) and IGNORE unrelated UI "
-                "text, menus, sidebars, or other people's unrelated messages.")
+        sys += (
+            "\n\nThe on-screen text below is a CONVERSATION that contains messages "
+            "from BOTH the user AND the other person, mixed together (you can't see "
+            "who sent which). You are writing the USER's next message — a reply TO "
+            "the other person, responding to what THEY most recently said. Write in "
+            "the user's own voice. Do NOT adopt the other person's perspective, do "
+            "NOT offer things the other person would offer (e.g. don't say \"let me "
+            "know if you need more details\" if the other person is the one giving "
+            "the details), and do NOT quote their message back. Just write the "
+            "user's reply. Ignore unrelated UI text, menus, and sidebars.")
     user = f"Write this for me: {instruction}"
     if context:
-        user = (f"{user}\n\nOn-screen text (context — may include unrelated UI):\n"
+        user = (f"{user}\n\nThe conversation on screen (both people's messages, mixed):\n"
                 f"\"\"\"\n{context}\n\"\"\"")
     messages = [
         {"role": "system", "content": sys},
