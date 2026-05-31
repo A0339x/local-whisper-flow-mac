@@ -409,6 +409,15 @@ ok("intent: 'get back to them'", flow.wants_context("get back to them and say I 
 ok("intent: 'tell them'", flow.wants_context("tell them I'll be there"))
 ok("NO intent: 'write that the meeting is at 3'", not flow.wants_context("write that the meeting is at 3"))
 ok("read_window_context never raises", isinstance(flow.read_window_context(time_budget=0.1), str))
+# Whisper repetition-loop collapse ("Well.... Well.... Well....")
+ok("collapses a 15x word loop",
+   flow.collapse_repeats("Now.... " + "Well.... " * 15 + "If we sell this").count("Well") == 1)
+ok("collapses a repeated phrase loop",
+   flow.collapse_repeats("I think I think I think I think we go") == "I think we go")
+ok("keeps intentional triple 'no no no'",
+   flow.collapse_repeats("no no no that is fine") == "no no no that is fine")
+ok("keeps normal sentence unchanged",
+   flow.collapse_repeats("the meeting is at three") == "the meeting is at three")
 
 # ── SUMMARY ──────────────────────────────────────────────────────────────────
 print("\n" + "=" * 72)

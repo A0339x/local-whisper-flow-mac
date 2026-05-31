@@ -1940,6 +1940,36 @@ def has_lexical_content(text: str) -> bool:
     return any(w not in _FILLER_WORDS for w in words)
 
 
+def collapse_repeats(text: str, max_phrase: int = 4, min_runs: int = 4) -> str:
+    """Collapse Whisper repetition loops. On hesitation/low-info audio Whisper can
+    get stuck emitting the same short word or phrase many times ("Well.... Well....
+    Well...."). Collapse a phrase of up to `max_phrase` words repeated `min_runs`+
+    times in a row down to a single copy. The high threshold preserves intentional
+    emphasis ("no no no")."""
+    if not text:
+        return text
+    words = text.split()
+    n = len(words)
+    out, i = [], 0
+    while i < n:
+        collapsed = False
+        for plen in range(1, min(max_phrase, (n - i) // 2) + 1):  # shortest first
+            phrase = [w.lower() for w in words[i:i + plen]]
+            runs, j = 1, i + plen
+            while j + plen <= n and [w.lower() for w in words[j:j + plen]] == phrase:
+                runs += 1
+                j += plen
+            if runs >= min_runs:
+                out.extend(words[i:i + plen])  # keep one copy
+                i = j
+                collapsed = True
+                break
+        if not collapsed:
+            out.append(words[i])
+            i += 1
+    return " ".join(out)
+
+
 # Phrases Whisper invents on silence/room-tone (its training data is full of
 # YouTube outros). When the WHOLE transcript is just one of these, it's almost
 # certainly a hallucination from an empty recording — not something the user
@@ -2798,6 +2828,7 @@ class FlowApp(rumps.App):
                 instruction = (getattr(self, "_stream_committed", "") + " " + tail_text).strip()
             else:
                 instruction = (transcribe(audio, model, lang, gloss).get("text") or "").strip()
+            instruction = collapse_repeats(instruction)
             log(f"  command: {instruction!r}")
             if not has_lexical_content(instruction) or is_hallucination(instruction, strict=True):
                 self.set_state(IDLE, "Heard nothing")
@@ -2939,6 +2970,7 @@ class FlowApp(rumps.App):
                 result = transcribe(audio, model, lang, glossary)
                 text = transcript_with_paragraphs(result, tone_cfg.get("paragraph_pause_seconds", 0))
                 log(f"  transcript: {text!r}")
+            text = collapse_repeats(text)
             text = apply_replacements(text, self.cfg.get("replacements", {}))
             if not has_lexical_content(text) or is_hallucination(text):
                 log("  (hallucination/empty transcript — nothing pasted)")
