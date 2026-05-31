@@ -2062,8 +2062,8 @@ class AssemblyAIStream:
            "&min_end_of_turn_silence_when_confident={eot}")
 
     def __init__(self, api_key: str, model: str = "universal-streaming-english",
-                 sample_rate: int = SAMPLE_RATE, eot_silence_ms: int = 240,
-                 tail_silence_ms: int = 400) -> None:
+                 sample_rate: int = SAMPLE_RATE, eot_silence_ms: int = 800,
+                 tail_silence_ms: int = 950) -> None:
         self._key = api_key
         self._sr = sample_rate
         self._tail = tail_silence_ms
@@ -2124,32 +2124,34 @@ class AssemblyAIStream:
         except Exception:
             self._alive = False
 
-    def finish(self, timeout: float = 2.0) -> str:
-        """Finalize and return the full (joined) transcript.
+    def _join(self) -> str:
+        return " ".join(self._turns[k] for k in sorted(self._turns)).strip()
 
-        Send a trailing silence so the model's natural endpointer fires and
-        commits the LAST word. We deliberately do NOT use ForceEndpoint — it
-        truncates at the current processed position and clips your final word.
-        Natural endpointing (with a low silence threshold) returns the complete
-        transcript in ~270ms. `timeout` is just a safety cap."""
+    def finish(self, timeout: float = 1.8) -> str:
+        """Return the full, complete transcript with clean sentence segmentation.
+
+        The high end-of-turn silence threshold means thinking-pauses do NOT split
+        your sentences (no spurious periods). The model only commits the FINAL word
+        when the turn endpoints, so:
+          • If you paused before tapping, the turn already ended — return instantly.
+          • Otherwise flush trailing silence to trigger a natural endpoint (we never
+            ForceEndpoint — it clips the last word) and wait (~0.5s) for it.
+        Pausing a beat before you tap gives you the instant path."""
         self._t0 = time.perf_counter()
-        # Fast path: if you paused before tapping, the model already finalized the
-        # turn — the full transcript is in hand, so return it with zero delay.
+        # Instant path: turn already ended while you paused → full transcript ready.
         if not self._open and self._turns:
             self.close()
-            return " ".join(self._turns[k] for k in sorted(self._turns)).strip()
-        # Otherwise you tapped mid-word: nudge natural endpointing with trailing
-        # silence (ForceEndpoint would clip the last word) and wait briefly.
+            return self._join()
         try:
-            self.send(b"\x00\x00" * int(self._tail / 1000 * self._sr))
+            if self._tail:
+                self.send(b"\x00\x00" * int(self._tail / 1000 * self._sr))
         except Exception:
             pass
-        # If nothing transcribed yet (empty/noise recording — a cough, a false
-        # start), bail fast instead of waiting the full safety timeout. Real
-        # speech always has a turn pending by stop, so it keeps the full window.
+        # Wait for the natural endpoint; if nothing was transcribed (noise/empty),
+        # bail fast rather than sitting out the whole timeout.
         self._final.wait(timeout=timeout if self._turns else 0.6)
         self.close()
-        return " ".join(self._turns[k] for k in sorted(self._turns)).strip()
+        return self._join()
 
     def close(self) -> None:
         self._alive = False
@@ -3627,8 +3629,8 @@ class FlowApp(rumps.App):
         try:
             stream = AssemblyAIStream(
                 key, model,
-                eot_silence_ms=int(tcfg.get("assemblyai_eot_silence_ms", 150)),
-                tail_silence_ms=int(tcfg.get("assemblyai_tail_silence_ms", 400)))
+                eot_silence_ms=int(tcfg.get("assemblyai_eot_silence_ms", 800)),
+                tail_silence_ms=int(tcfg.get("assemblyai_tail_silence_ms", 950)))
             stream.start()
         except Exception as e:
             log(f"  AssemblyAI stream failed to start: {e} — falling back to local")
