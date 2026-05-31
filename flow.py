@@ -2188,7 +2188,13 @@ def generate_text(instruction: str, url: str, model: str, style: str = "",
             "The text may also contain a SIDEBAR list of OTHER conversations (names + "
             "short previews) and app navigation — those are NOT the conversation. The "
             "real conversation is the longest back-and-forth exchange; reply to ITS "
-            "most recent message and ignore everything else.")
+            "most recent message and ignore everything else.\n"
+            "EXAMPLE — the other person has been venting that their new job is rough "
+            "but they landed a side gig that pays much more. A GOOD reply (as the user, "
+            "to them): \"That's a rough spot, but the side gig sounds like a great move "
+            "— hope it leads to more of that.\"  A BAD reply (wrong perspective / fake "
+            "commitment): \"Thanks, that means a lot. Looking forward to getting the "
+            "gig sorted.\" (that's the OTHER person's gig, and invents commitment).")
     user = f"Write this for me: {instruction}"
     if context:
         user = (f"{user}\n\nThe conversation on screen (both people's messages, mixed):\n"
