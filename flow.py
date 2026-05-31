@@ -976,13 +976,17 @@ class OnboardingController(NSObject):
 
     @objc.python_method
     def _build_steps(self) -> list:
-        """Onboarding steps, tailored to the edition. The model-download step only
-        applies to LOCAL dictation; the cloud edition has nothing to download. (The
-        old voice-calibration steps fed the removed excitement feature and are
-        gone.)"""
-        cloud = (self._app.cfg.get("transcription", {})
-                 .get("backend", "local").lower() == "cloud")
+        """Onboarding steps, tailored to the edition: the API-key step appears only
+        when a cloud backend (Groq/OpenAI) is configured; the model-download step
+        only for LOCAL dictation. (The old voice-calibration steps fed the removed
+        excitement feature and are gone.)"""
+        tcfg = self._app.cfg.get("transcription", {})
+        fcfg = self._app.cfg.get("formatting", {})
+        cloud = tcfg.get("backend", "local").lower() == "cloud"
+        needs_key = cloud or bool((fcfg.get("command_base_url") or "").strip())
         steps = ["welcome", "permissions", "shortcut"]
+        if needs_key:
+            steps.append("apikey")
         if not cloud:
             steps.append("download")
         steps.append("done")
@@ -1008,7 +1012,7 @@ class OnboardingController(NSObject):
 
     @objc.python_method
     def _button(self, parent, title, frame, action):
-        b = NSButton.alloc().initWithFrame_(frame)
+        b = FirstMouseButton.alloc().initWithFrame_(frame)
         b.setTitle_(title)
         b.setBezelStyle_(1)  # rounded
         b.setTarget_(self)
@@ -1064,23 +1068,21 @@ class OnboardingController(NSObject):
     def _step_welcome(self, cv):
         self._label(cv, "Welcome to Voice To Text", NSMakeRect(40, OB_H - 70, OB_W - 80, 30), size=20, bold=True)
         body = (
-            "Free, on-device dictation — your voice never leaves this Mac.\n\n"
-            "HOW IT WORKS\n"
-            "•  Tap the Right Option (⌥) key, start talking, then tap it again to "
-            "stop. Your words are cleaned up and pasted wherever your cursor is.\n"
-            "•  A floating waveform pill appears while recording — press ✓ to "
-            "finish or ✕ to cancel.\n"
-            "•  It removes filler words, fixes punctuation, applies “no wait, I "
-            "mean…” corrections, and adds “!” when you sound excited.\n\n"
-            "ABOUT THE “WARM MIC”\n"
-            "To capture instantly with no clipped words, the app keeps your "
-            "built-in Mac microphone active the whole time it runs. That’s why "
-            "you’ll see the orange mic dot in the menu bar — it’s expected and "
-            "normal. Your headphones/AirPods are never used for input, so their "
-            "audio quality stays perfect. You can change the mic or turn this off "
-            "anytime in Settings (click the app icon)."
+            "Two keys do everything:\n\n"
+            "RIGHT OPTION (⌥)  —  DICTATE\n"
+            "Tap it, talk, tap again. Your words are typed wherever your cursor is — "
+            "fast and accurate.\n\n"
+            "LEFT OPTION (⌥)  —  AI WRITE & EDIT\n"
+            "Tap it and speak an instruction:\n"
+            "•  With text selected → it rewrites it (“make this friendlier”, “fix the grammar”).\n"
+            "•  With nothing selected → it writes for you (“draft an email saying I’ll be "
+            "late”, “reply to this”).\n\n"
+            "A floating waveform pill appears while recording — ✓ to finish, ✕ to cancel.\n\n"
+            "WARM MIC: to capture instantly, the app keeps your built-in mic active while "
+            "it runs (the orange dot in the menu bar — expected and normal). Change the mic "
+            "or turn it off anytime in Settings."
         )
-        self._label(cv, body, NSMakeRect(40, 70, OB_W - 80, OB_H - 150))
+        self._label(cv, body, NSMakeRect(40, 60, OB_W - 80, OB_H - 140))
 
     @objc.python_method
     def _step_permissions(self, cv):
@@ -1114,19 +1116,26 @@ class OnboardingController(NSObject):
 
     @objc.python_method
     def _step_shortcut(self, cv):
-        self._label(cv, "Pick your dictation key", NSMakeRect(40, OB_H - 70, OB_W - 80, 30), size=20, bold=True)
+        self._label(cv, "Pick your two keys", NSMakeRect(40, OB_H - 70, OB_W - 80, 30), size=20, bold=True)
         self._label(
             cv,
-            "How do you want to start dictation? Tap a single key (Right Option is "
-            "the default) or press a key combo like ⌃⌥D. Press “Change”, then press "
-            "the key or combo you want.\n\nTip: a combo like ⌥C may also type a "
-            "character — a bare key or a ⌃-combo is cleanest.",
-            NSMakeRect(40, OB_H - 178, OB_W - 80, 100),
+            "Two keys, two jobs. Tap a single key (the Option keys are the defaults) "
+            "or a combo like ⌃⌥D. Press “Change”, then press the key you want.\n"
+            "Tip: a bare key or a ⌃-combo is cleanest (some combos also type a character).",
+            NSMakeRect(40, OB_H - 134, OB_W - 80, 60),
         )
+        # Dictation key
+        self._label(cv, "Dictate:", NSMakeRect(40, OB_H - 184, 95, 20), bold=True)
         cur = self._app.cfg.get("hotkey", {}).get("key", "alt_r")
-        self._label(cv, "Current:", NSMakeRect(40, OB_H - 224, 80, 20))
-        self._ob_dict_val = self._label(cv, hotkey_label(cur), NSMakeRect(120, OB_H - 224, 150, 22), size=15, bold=True)
-        self._button(cv, "Change…", NSMakeRect(290, OB_H - 228, 130, 30), "changeShortcut:")
+        self._ob_dict_val = self._label(cv, hotkey_label(cur), NSMakeRect(140, OB_H - 184, 150, 22), size=15, bold=True)
+        self._button(cv, "Change…", NSMakeRect(300, OB_H - 188, 120, 30), "changeShortcut:")
+        self._label(cv, "Speech → text.", NSMakeRect(140, OB_H - 208, 280, 18), secondary=True)
+        # Command / Write key
+        self._label(cv, "Write / Edit:", NSMakeRect(40, OB_H - 256, 95, 20), bold=True)
+        ccur = self._app.cfg.get("hotkey", {}).get("command_key", "alt_l")
+        self._ob_cmd_val = self._label(cv, hotkey_label(ccur), NSMakeRect(140, OB_H - 256, 150, 22), size=15, bold=True)
+        self._button(cv, "Change…", NSMakeRect(300, OB_H - 260, 120, 30), "changeCommandShortcut:")
+        self._label(cv, "Speak an instruction → AI writes or rewrites.", NSMakeRect(140, OB_H - 280, 360, 18), secondary=True)
 
     def changeShortcut_(self, sender):  # noqa: N802
         sender.setEnabled_(False)
@@ -1143,6 +1152,85 @@ class OnboardingController(NSObject):
                 )
 
         self._app.record_hotkey("key", done)
+
+    def changeCommandShortcut_(self, sender):  # noqa: N802
+        sender.setEnabled_(False)
+        sender.setTitle_("Press keys… (Esc)")
+        if self._ob_cmd_val is not None:
+            self._ob_cmd_val.setStringValue_("…")
+
+        def done(spec, lbl):
+            sender.setEnabled_(True)
+            sender.setTitle_("Change…")
+            if self._ob_cmd_val is not None:
+                self._ob_cmd_val.setStringValue_(
+                    hotkey_label(self._app.cfg.get("hotkey", {}).get("command_key", "alt_l"))
+                )
+
+        self._app.record_hotkey("command_key", done)
+
+    @objc.python_method
+    def _step_apikey(self, cv):
+        self._label(cv, "Add your Groq API key", NSMakeRect(40, OB_H - 70, OB_W - 80, 30), size=20, bold=True)
+        tcfg = self._app.cfg.get("transcription", {})
+        fcfg = self._app.cfg.get("formatting", {})
+        if tcfg.get("backend", "local").lower() == "cloud":
+            kf = tcfg.get("cloud_api_key_file", "") or fcfg.get("command_api_key_file", "")
+        else:
+            kf = fcfg.get("command_api_key_file", "") or tcfg.get("cloud_api_key_file", "")
+        self._ob_key_file = Path(kf).expanduser() if kf else None
+        present = False
+        try:
+            present = bool(self._ob_key_file and self._ob_key_file.read_text().strip())
+        except Exception:
+            present = False
+        self._label(
+            cv,
+            "This edition uses Groq (for transcription and/or AI writing). Get a free "
+            "key at console.groq.com — no card needed — then paste it below and Save. "
+            "It’s stored only on this Mac (~/.config/voice-to-text/), never uploaded "
+            "or committed.",
+            NSMakeRect(40, OB_H - 150, OB_W - 80, 64),
+        )
+        self._button(cv, "Open console.groq.com", NSMakeRect(40, OB_H - 196, 220, 30), "openGroq:")
+        fld = NSTextField.alloc().initWithFrame_(NSMakeRect(40, OB_H - 248, OB_W - 200, 28))
+        fld.setEditable_(True); fld.setBezeled_(True); fld.setDrawsBackground_(True)
+        fld.setPlaceholderString_("gsk_…  (paste your key)")
+        cv.addSubview_(fld)
+        self._ob_key_field = fld
+        self._button(cv, "Save", NSMakeRect(OB_W - 150, OB_H - 248, 110, 30), "saveApiKey:")
+        self._ob_key_status = self._label(
+            cv,
+            "✓ A Groq key is already set — paste a new one only to replace it." if present
+            else "No key saved yet. Paste yours above and click Save.",
+            NSMakeRect(40, OB_H - 286, OB_W - 80, 22), secondary=True,
+        )
+
+    def saveApiKey_(self, sender):  # noqa: N802
+        try:
+            key = (self._ob_key_field.stringValue() or "").strip()
+            if not key:
+                self._ob_key_status.setStringValue_("Paste a key first.")
+                return
+            if self._ob_key_file is None:
+                self._ob_key_status.setStringValue_("No key file configured for this edition.")
+                return
+            self._ob_key_file.parent.mkdir(parents=True, exist_ok=True)
+            self._ob_key_file.write_text(key)
+            try:
+                os.chmod(self._ob_key_file, 0o600)
+            except Exception:
+                pass
+            self._ob_key_field.setStringValue_("")
+            self._ob_key_status.setStringValue_("✓ Saved. You're all set.")
+        except Exception as e:
+            self._ob_key_status.setStringValue_(f"Could not save: {e}")
+
+    def openGroq_(self, sender):  # noqa: N802
+        try:
+            subprocess.Popen(["open", "https://console.groq.com/keys"])
+        except Exception:
+            pass
 
     @objc.python_method
     def _calib_step(self, cv, title, instruction, action):
