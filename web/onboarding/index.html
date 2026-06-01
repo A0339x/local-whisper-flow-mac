@@ -469,7 +469,6 @@ window.flowInit=function(s){
   if(s.dictate){const e=document.getElementById('lblDictate'); if(e) e.textContent=s.dictate;}
   if(s.command){const e=document.getElementById('lblCommand'); if(e) e.textContent=s.command;}
   if(s.perms) window.flowPerms(s.perms);
-  window.flowKeyStatus('assemblyai', !!s.aai);
   window.flowKeyStatus('groq', !!s.groq);
 };
 window.flowPerms=function(p){
@@ -488,7 +487,7 @@ window.flowPerms=function(p){
     : '<span class="b" style="background:var(--amber);box-shadow:none"></span> Grant the dimmed ones above (relaunch the app if a dot stays grey).';
 };
 window.flowKeyStatus=function(which, set){
-  const el=document.getElementById(which==='assemblyai'?'aaiStatus':'groqStatus'); if(!el) return;
+  const el=document.getElementById('groqStatus'); if(!el) return;
   el.textContent = set ? '— set ✓' : '— not set';
   el.classList.toggle('set', !!set);
   const btn=document.querySelector(`[data-act="enterKey"][data-which="${which}"]`);

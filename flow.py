@@ -1153,7 +1153,6 @@ class OnboardingController(NSObject):
             "dictate": hotkey_label(h.get("key", "alt_r")),
             "command": hotkey_label(h.get("command_key", "alt_l")),
             "perms": self._perm_status(),
-            "aai": self._key_present("assemblyai"),
             "groq": self._key_present("groq"),
         })
         self._eval_js(f"window.flowInit({payload})")
@@ -1183,7 +1182,6 @@ class OnboardingController(NSObject):
                 # The live poller (_start_perm_poll) flips the dot once granted.
         elif action == "setOffline":
             self._app.apply_offline_mode(bool(msg.get("offline")))
-            self._eval_js(f"window.flowKeyStatus('assemblyai', {'true' if self._key_present('assemblyai') else 'false'})")
             self._eval_js(f"window.flowKeyStatus('groq', {'true' if self._key_present('groq') else 'false'})")
         elif action == "recordKey":
             self._record_key(str(msg.get("which", "")))
@@ -1207,9 +1205,12 @@ class OnboardingController(NSObject):
 
     @objc.python_method
     def _prompt_key(self, which: str) -> None:
-        label = "AssemblyAI" if which == "assemblyai" else "Groq"
-        acct = "assemblyai_key" if which == "assemblyai" else "groq_key"
-        place = "your AssemblyAI key" if which == "assemblyai" else "gsk_…  (your Groq key)"
+        # Onboarding only offers Groq (online dictation + AI write). The AssemblyAI
+        # backend remains available as an advanced opt-in via config.assemblyai.toml,
+        # but is intentionally not surfaced in onboarding.
+        label = "Groq"
+        acct = "groq_key"
+        place = "gsk_…  (your Groq key)"
 
         def run():
             alert = NSAlert.alloc().init()
