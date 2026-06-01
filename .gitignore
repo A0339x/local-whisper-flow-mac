@@ -24,3 +24,4 @@ config.local.toml
 
 # Real-voice accuracy test recordings (personal audio)
 experiments/voice_test_recordings/
+.vercel
